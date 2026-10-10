@@ -25,9 +25,18 @@ body { background: #ffffff; color: #24292f; display: flex; flex-direction: colum
 #toolbar .status { margin-left: auto; font-size: 11px; color: #57606a; }
 
 /* ========== 主区域 ========== */
-#main { display: flex; flex: 1; min-height: 0; }
-#left { width: 60%; display: flex; flex-direction: column; min-width: 0; }
-#right { width: 40%; background: #f6f8fa; display: flex; flex-direction: column; border-left: 1px solid #d0d7de; min-width: 0; }
+#main { display: flex; flex: 1; min-height: 0; --left-ratio: 60; }
+#left { flex: var(--left-ratio) 1 0%; display: flex; flex-direction: column; min-width: 0; }
+#splitter {
+  flex: 0 0 6px; cursor: col-resize; background: #fff; position: relative; z-index: 5;
+  transition: background .15s ease;
+}
+#splitter::after {
+  content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px;
+  transform: translateX(-50%); background: #d0d7de;
+}
+#splitter:hover::after { width: 2px; background: #0969da; }
+#right { flex: calc(100 - var(--left-ratio)) 1 0%; background: #f6f8fa; display: flex; flex-direction: column; min-width: 0; }
 
 /* ========== Monaco 编辑器容器 ========== */
 #monaco-container { flex: 1; min-height: 0; }
@@ -70,6 +79,44 @@ body { background: #ffffff; color: #24292f; display: flex; flex-direction: colum
   display: inline-block; background: #bf8700; color: #fff; font-size: 10px;
   padding: 2px 6px; border-radius: 3px; margin-bottom: 6px; font-weight: 600;
 }
+
+/* ========== 标签 chip（R4/R10） ========== */
+.card .tag-chip {
+  display: inline-block; color: #fff; font-size: 10px;
+  padding: 2px 8px; border-radius: 10px; margin-bottom: 6px;
+  font-weight: 600; cursor: pointer; user-select: none;
+  transition: filter .15s;
+}
+.card .tag-chip:hover { filter: brightness(0.9); }
+.card.tag-definition { border-left: 3px solid #0969da; }
+.card.tag-formula    { border-left: 3px solid #8250df; }
+.card.tag-rule       { border-left: 3px solid #1a7f37; }
+.card.tag-todo       { border-left: 3px solid #bf8700; }
+
+/* 标签修改下拉菜单（R5） */
+.tag-menu {
+  position: fixed; z-index: 10000;
+  background: #fff; border: 1px solid #d0d7de; border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding: 4px 0;
+  min-width: 120px; font-size: 12px;
+}
+.tag-menu .tag-menu-item {
+  padding: 6px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px;
+}
+.tag-menu .tag-menu-item:hover { background: #f6f8fa; }
+.tag-menu .tag-menu-item .dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+}
+.tag-menu .tag-menu-item.active::after { content: ' ✓'; color: #0969da; margin-left: auto; }
+.tag-menu .tag-menu-item.clear { color: #cf222e; border-top: 1px solid #d0d7de; margin-top: 4px; padding-top: 8px; }
+
+/* 右栏标签筛选下拉（R8） */
+#tag-filter {
+  background: #fff; border: 1px solid #d0d7de; color: #24292f;
+  padding: 5px 8px; border-radius: 4px; font-size: 12px; outline: none;
+  cursor: pointer;
+}
+#tag-filter:focus { border-color: #0969da; }
 
 .card .source-text {
   background: rgba(9,105,218,0.12); border-radius: 4px; padding: 4px 8px;
@@ -124,6 +171,29 @@ mark.sub-anchor:hover { background: rgba(9,105,218,0.32); }
   border-bottom: 1px dashed #0969da;
 }
 .card .note-content mark.sub-anchor:hover { background: rgba(9,105,218,0.35); }
+
+/* ========== 卡片编辑态（feature-card-edit R1） ========== */
+.card .note-content[contenteditable="true"],
+.card .note-editor {
+  font-size: 13px; line-height: 1.6; color: #24292f;
+}
+.card .note-editor {
+  width: 100%; min-height: 80px; resize: vertical;
+  border: 1px solid #0969da; border-radius: 6px; padding: 8px 10px;
+  font-family: "Fira Code", Consolas, "Microsoft YaHei", monospace;
+  font-size: 12px; color: #24292f; background: #fff;
+  outline: none; transition: border-color .15s, box-shadow .15s;
+  box-shadow: 0 0 0 2px rgba(9,105,218,0.15);
+}
+.card .note-editor:focus { border-color: #0969da; }
+.card .edit-hint {
+  font-size: 11px; color: #57606a; margin-top: 6px; text-align: right;
+  font-style: italic;
+}
+.card .note-content.stale-child-hint {
+  color: #bf8700; background: rgba(188,127,48,0.1);
+  padding: 4px 8px; border-radius: 4px; margin-bottom: 6px; font-size: 11px;
+}
 
 .card .actions {
   position: absolute; top: 10px; right: 12px; display: flex; gap: 4px;
@@ -499,10 +569,21 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     <div id="monaco-container"></div>
   </div>
 
+  <!-- 分割线（拖拽调整左右栏比例，双击恢复默认 60:40） -->
+  <div id="splitter" title="拖拽调整比例，双击恢复默认"></div>
+
   <!-- 右栏 -->
   <div id="right">
     <div id="right-toolbar">
       <input type="text" id="search-input" placeholder="🔍 搜索批注..." />
+      <select id="tag-filter" title="按标签筛选">
+        <option value="">🏷️ 全部标签</option>
+        <option value="definition">定义</option>
+        <option value="formula">公式</option>
+        <option value="rule">规则</option>
+        <option value="todo">待确认</option>
+        <option value="__none__">（无标签）</option>
+      </select>
       <span class="stats" id="stats">0 条批注</span>
     </div>
     <div id="annotation-list"></div>
@@ -537,6 +618,16 @@ const INDEX_KEY = 'doc-branch-index-v1';           // 文件索引 key
 const FILE_KEY_PREFIX = 'doc-branch-files/';       // 每个文件的 key 前缀
 const DATA_VERSION = 2;                             // 数据格式版本（从 1 升到 2，支持多文件）
 const GUIDELINE_MODE_KEY = 'doc-branch-guideline-mode-v1'; // 虚线指引三态：smart / all / off
+const SPLIT_RATIO_KEY = 'doc-branch-split-ratio-v1';       // 分割线位置（左栏百分比 30~80）
+
+/* 预设标签类型（R1） */
+const TAG_OPTIONS = [
+  { key: 'definition', label: '定义', color: '#0969da' },
+  { key: 'formula',    label: '公式', color: '#8250df' },
+  { key: 'rule',       label: '规则', color: '#1a7f37' },
+  { key: 'todo',       label: '待确认', color: '#bf8700' },
+];
+const TAG_MAP = Object.fromEntries(TAG_OPTIONS.map(t => [t.key, t]));
 const DEFAULT_DOC = `# 示例文档: 号码筛选规则
 
 不选任何条件 | 该维度不过滤, 全部 80 个号码通过.
@@ -646,6 +737,7 @@ const state = {
   showHighlight: true,       // 全局高亮开关
   readOnly: false,            // 只读模式
   searchKeyword: '',          // 搜索关键词
+  tagFilter: '',              // 标签筛选（空=全部，不持久化 R9）
   collapsedIds: new Set(),   // 被折叠的批注 id 集合
 
   /* ====== 虚线指引连线 ====== */
@@ -657,6 +749,7 @@ const state = {
   currentFileId: null,       // 当前激活的文件 id
   files: [],                 // 文件索引数组 [{id, name, docPath}]
   switchingFile: false,      // 文件切换中标志（debounceSave 检查此标志跳过）
+  splitRatio: 60,            // 分割线位置（左栏百分比 30~80）
 };
 
 /* ==================== Layer 1: 数据存储层（多文件两层架构） ==================== */
@@ -718,10 +811,20 @@ const Storage = {
       if (!raw) return null;
       const data = JSON.parse(raw);
       if (!data || data.version !== DATA_VERSION) return null;
+      // R7: 旧数据补 tag 字段
+      if (Array.isArray(data.annotations)) this._normalizeTags(data.annotations);
       return data;
     } catch (e) {
       console.error('读取文件数据失败:', e);
       return null;
+    }
+  },
+
+  /* R7: 递归为所有批注节点补 tag: null（兼容旧数据） */
+  _normalizeTags(list) {
+    for (const a of list) {
+      if (typeof a.tag !== 'string') a.tag = null;
+      if (Array.isArray(a.children)) this._normalizeTags(a.children);
     }
   },
 
@@ -810,8 +913,8 @@ const Annotations = {
   /* 生成 UUID */
   newId() { return uuidv4(); },
 
-  /* 添加一级批注 */
-  addTopLevel(range, sourceText, note) {
+  /* 添加一级批注 —— tag 可选，默认 null（R6） */
+  addTopLevel(range, sourceText, note, tag = null) {
     const ann = {
       id: this.newId(),
       parentId: null,
@@ -819,14 +922,15 @@ const Annotations = {
       range: { ...range },
       sourceText,
       note,
+      tag,
       children: [],
     };
     state.annotations.push(ann);
     return ann;
   },
 
-  /* 添加子批注 —— parentId: 父批注 id, offsetStart/End: 父 note 内字符偏移 */
-  addChild(parentId, noteOffsetStart, noteOffsetEnd, sourceText, note) {
+  /* 添加子批注 —— parentId: 父批注 id, offsetStart/End: 父 note 内字符偏移, tag 可选 */
+  addChild(parentId, noteOffsetStart, noteOffsetEnd, sourceText, note, tag = null) {
     const parent = this.findById(parentId);
     if (!parent) return null;
     const child = {
@@ -837,10 +941,18 @@ const Annotations = {
       noteOffsetEnd,
       sourceText,
       note,
+      tag,
       children: [],
     };
     parent.children.push(child);
     return child;
+  },
+
+  /* 更新批注标签（R5） */
+  updateTag(id, tag) {
+    const ann = this.findById(id);
+    if (!ann) return;
+    ann.tag = (typeof tag === 'string' && TAG_MAP[tag]) ? tag : null;
   },
 
   /* 递归查找 */
@@ -871,6 +983,37 @@ const Annotations = {
     const actual = model.getValueInRange(range);
     ann.sourceText = actual;
     ann.status = 'active';
+  },
+
+  /* R1-R8: 编辑批注 note 内容；如果修改的是父批注，自动重算子批注偏移 */
+  editNote(id, newNote) {
+    const ann = this.findById(id);
+    if (!ann) return null;
+    const oldNote = ann.note || '';
+    ann.note = newNote;
+    // R6/R7: 如果修改的是父批注（有 children），重算子批注偏移
+    if (ann.children && ann.children.length > 0) {
+      this.recalcChildOffsets(id, oldNote, newNote);
+    }
+    return ann;
+  },
+
+  /* R7: 重算指定父批注下所有子批注的 noteOffset
+   * 用每个 child.sourceText 在新 note 中 indexOf 查找；找不到标记为 stale */
+  recalcChildOffsets(parentId, oldNote, newNote) {
+    const parent = this.findById(parentId);
+    if (!parent || !parent.children || parent.children.length === 0) return;
+    for (const child of parent.children) {
+      const idx = newNote.indexOf(child.sourceText);
+      if (idx !== -1) {
+        child.noteOffsetStart = idx;
+        child.noteOffsetEnd = idx + child.sourceText.length;
+        child.status = 'active';
+      } else {
+        // 找不到：子批注标记为 stale（但子批注没有 status 渲染，只通过父卡片提示）
+        child.status = 'stale';
+      }
+    }
   },
 
   /* 重新检测所有一级批注的状态 */
@@ -1033,6 +1176,22 @@ const Highlight = {
 
 /* ==================== Layer 4: 弹窗与右键菜单 ==================== */
 const Modal = {
+  /* 生成标签下拉 HTML 选项 */
+  _tagSelectHtml(defaultTag = 'definition') {
+    const options = TAG_OPTIONS.map(t =>
+      `<option value="${t.key}" ${t.key === defaultTag ? 'selected' : ''}>${t.label}</option>`
+    ).join('');
+    return `
+      <div class="modal-row" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <label style="font-size:12px;color:#57606a;flex-shrink:0;">标签：</label>
+        <select id="modal-tag" style="flex:1;background:#fff;border:1px solid #d0d7de;color:#24292f;padding:5px 8px;border-radius:4px;font-size:12px;outline:none;cursor:pointer;">
+          <option value="">（无标签）</option>
+          ${options}
+        </select>
+      </div>
+    `;
+  },
+
   showAddTopLevel(range, sourceText) {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
@@ -1040,6 +1199,7 @@ const Modal = {
       <div class="modal">
         <h3>📝 添加批注</h3>
         <div class="selected-preview">${UI.escapeHtml(sourceText)}</div>
+        ${this._tagSelectHtml()}
         <textarea id="modal-note" placeholder="输入批注说明，支持 Markdown 语法..."></textarea>
         <div class="modal-actions">
           <button class="btn-secondary" id="modal-cancel">取消</button>
@@ -1050,6 +1210,7 @@ const Modal = {
     document.body.appendChild(overlay);
 
     const noteInput = overlay.querySelector('#modal-note');
+    const tagSelect = overlay.querySelector('#modal-tag');
     noteInput.focus();
 
     const close = () => overlay.remove();
@@ -1058,7 +1219,8 @@ const Modal = {
     overlay.querySelector('#modal-save').onclick = () => {
       const note = noteInput.value.trim();
       if (!note) { noteInput.focus(); return; }
-      Annotations.addTopLevel({ ...range }, sourceText, note);
+      const tag = tagSelect.value || null;
+      Annotations.addTopLevel({ ...range }, sourceText, note, tag);
       close();
       this._afterAnnotation();
     };
@@ -1071,6 +1233,7 @@ const Modal = {
       <div class="modal">
         <h3>📝 添加子批注</h3>
         <div class="selected-preview">${UI.escapeHtml(sourceText)}</div>
+        ${this._tagSelectHtml()}
         <textarea id="modal-note" placeholder="输入批注说明..."></textarea>
         <div class="modal-actions">
           <button class="btn-secondary" id="modal-cancel">取消</button>
@@ -1081,6 +1244,7 @@ const Modal = {
     document.body.appendChild(overlay);
 
     const noteInput = overlay.querySelector('#modal-note');
+    const tagSelect = overlay.querySelector('#modal-tag');
     noteInput.focus();
 
     const close = () => overlay.remove();
@@ -1089,7 +1253,8 @@ const Modal = {
     overlay.querySelector('#modal-save').onclick = () => {
       const note = noteInput.value.trim();
       if (!note) { noteInput.focus(); return; }
-      Annotations.addChild(parentId, noteOffsetStart, noteOffsetEnd, sourceText, note);
+      const tag = tagSelect.value || null;
+      Annotations.addChild(parentId, noteOffsetStart, noteOffsetEnd, sourceText, note, tag);
       close();
       this._afterAnnotation();
     };
@@ -1300,58 +1465,35 @@ const CtxMenu = {
 
 /* ==================== Layer 5: 右栏卡片渲染 ==================== */
 const RightPanel = {
+  /* R8: 判断批注是否匹配标签筛选（空=全部，__none__=无标签） */
+  _matchTag(ann) {
+    const f = state.tagFilter;
+    if (!f) return true;
+    if (f === '__none__') return !ann.tag;
+    return ann.tag === f;
+  },
+
   render() {
     const list = document.getElementById('annotation-list');
     list.innerHTML = '';
     const keyword = state.searchKeyword.trim().toLowerCase();
+    const hasFilter = keyword || state.tagFilter;
 
-    const walk = (anns, depth = 0) => {
-      for (const ann of anns) {
-        // 搜索过滤
-        if (keyword) {
-          const match = (ann.sourceText.toLowerCase().includes(keyword) || ann.note.toLowerCase().includes(keyword));
-          if (!match) continue;
-        }
-        const card = this.createCard(ann, depth);
-        list.appendChild(card);
-        if (ann.children && ann.children.length > 0) {
-          const childrenDiv = document.createElement('div');
-          childrenDiv.className = 'children';
-          // 递归渲染子批注
-          const savedList = ann.children;
-          ann.children.forEach((c, i) => {
-            if (keyword) {
-              // 搜索模式下只显示匹配的子批注
-              if (!c.sourceText.toLowerCase().includes(keyword) && !c.note.toLowerCase().includes(keyword)) return;
-            }
-            const subCard = this.createCard(c, depth + 1, ann);
-            childrenDiv.appendChild(subCard);
-          });
-          // 如果有子批注（搜索模式下只显示匹配的），加到 card 后面
-          if (childrenDiv.children.length > 0) {
-            const wrap = document.createElement('div');
-            wrap.className = 'children';
-            ann.children.forEach((c) => {
-              if (keyword) {
-                if (!c.sourceText.toLowerCase().includes(keyword) && !c.note.toLowerCase().includes(keyword)) return;
-              }
-              wrap.appendChild(this.createCard(c, depth + 1, ann));
-            });
-            card.appendChild(wrap);
-          }
-        }
-      }
+    // 统一的匹配判断
+    const _match = (ann) => {
+      const tagOk = this._matchTag(ann);
+      if (!tagOk) return false;
+      if (!keyword) return true;
+      return (ann.sourceText.toLowerCase().includes(keyword) || ann.note.toLowerCase().includes(keyword));
     };
 
-    // 非搜索模式下正确的层级嵌套
-    if (!keyword) {
-      list.innerHTML = '';
+    if (!hasFilter) {
+      // 无任何过滤 → 完整树形
       state.annotations.forEach(ann => {
         list.appendChild(this._buildCardWithChildren(ann, 0));
       });
     } else {
-      // 搜索模式：扁平化匹配项
-      list.innerHTML = '';
+      // 有过滤 → 收集所有匹配的节点（父子都独立判断，扁平显示匹配项）
       const flat = [];
       const collect = (anns) => {
         for (const a of anns) {
@@ -1360,10 +1502,9 @@ const RightPanel = {
         }
       };
       collect(state.annotations);
-      const matched = flat.filter(({ ann }) =>
-        ann.sourceText.toLowerCase().includes(keyword) || ann.note.toLowerCase().includes(keyword)
-      );
-      matched.forEach(({ ann }) => list.appendChild(this._buildCardWithChildren(ann, 0)));
+      flat.forEach(({ ann }) => {
+        if (_match(ann)) list.appendChild(this._buildCardWithChildren(ann, 0));
+      });
     }
 
     // 统计
@@ -1407,6 +1548,8 @@ const RightPanel = {
 
     if (ann.status === 'orphaned') card.classList.add('orphaned');
     if (ann.status === 'stale') card.classList.add('stale');
+    // R10: 追加 tag-xxx class
+    if (ann.tag && TAG_MAP[ann.tag]) card.classList.add('tag-' + ann.tag);
 
     // 状态标签
     if (ann.status === 'orphaned') {
@@ -1419,6 +1562,21 @@ const RightPanel = {
       tag.className = 'stale-tag';
       tag.textContent = '⚠️ 原文已变更';
       card.appendChild(tag);
+    }
+
+    // R4: 标签 chip（可点击修改）
+    if (ann.tag && TAG_MAP[ann.tag]) {
+      const tagInfo = TAG_MAP[ann.tag];
+      const chip = document.createElement('span');
+      chip.className = 'tag-chip';
+      chip.textContent = tagInfo.label;
+      chip.style.background = tagInfo.color;
+      chip.title = '点击修改标签';
+      chip.onclick = (e) => {
+        e.stopPropagation();
+        this._showTagMenu(chip, ann);
+      };
+      card.appendChild(chip);
     }
 
     // 操作按钮
@@ -1490,6 +1648,7 @@ const RightPanel = {
     // 批注说明（Markdown 渲染），子批注高亮锚点在渲染后叠加
     const noteEl = document.createElement('div');
     noteEl.className = 'note-content';
+    noteEl.dataset.annId = ann.id;
     const renderedHtml = simpleMarkdown(ann.note || '');
     noteEl.innerHTML = renderedHtml;
 
@@ -1499,7 +1658,19 @@ const RightPanel = {
     // 子批注在这个容器内支持右键选中文本添加孙子批注
     this._attachCardContextMenu(noteEl, ann);
 
+    // R1: 双击进入编辑态
+    noteEl.style.cursor = 'text';
+    noteEl.ondblclick = () => this._enterNoteEdit(noteEl, ann);
+
     card.appendChild(noteEl);
+
+    // R7: 如果有子批注处于 stale 状态，显示提示
+    if (ann.children && ann.children.some(c => c.status === 'stale')) {
+      const staleHint = document.createElement('div');
+      staleHint.className = 'stale-child-hint';
+      staleHint.textContent = '⚠️ 子批注锚点可能因父批注文本变更而偏移，请检查';
+      card.appendChild(staleHint);
+    }
 
     // stale 确认更新按钮
     if (ann.status === 'stale' && ann.parentId === null) {
@@ -1516,6 +1687,145 @@ const RightPanel = {
     }
 
     return card;
+  },
+
+  /* R1-R8: 进入批注说明编辑态 */
+  _enterNoteEdit(noteEl, ann) {
+    // R3: 先取消所有正在进行的编辑态（避免 DOM 残留）
+    document.querySelectorAll('.note-editor-wrap').forEach(w => w.remove());
+    document.querySelectorAll('.note-content.editing').forEach(el => {
+      el.classList.remove('editing');
+      el.style.display = '';
+    });
+
+    // 隐藏原 noteEl，换成编辑器
+    noteEl.classList.add('editing');
+    noteEl.style.display = 'none';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'note-editor-wrap';
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'note-editor';
+    textarea.value = ann.note || '';
+    textarea.placeholder = '输入批注说明，支持 Markdown...';
+    textarea.rows = Math.max(3, Math.min(15, (ann.note || '').split('\n').length + 1));
+    wrap.appendChild(textarea);
+
+    // R2: 快捷键提示
+    const hint = document.createElement('div');
+    hint.className = 'edit-hint';
+    hint.textContent = 'Ctrl+Enter 保存 · Esc 取消';
+    wrap.appendChild(hint);
+
+    noteEl.parentNode.insertBefore(wrap, noteEl.nextSibling);
+    textarea.focus();
+    textarea.select();
+
+    // R4+R5+R8: 保存逻辑
+    const save = () => {
+      const newVal = textarea.value.trim();
+      const oldVal = ann.note || '';
+      if (newVal === oldVal) {
+        // 内容没变，取消即可
+        this._cancelNoteEdit(wrap, noteEl);
+        return;
+      }
+      Annotations.editNote(ann.id, newVal);
+      // 直接重渲染卡片（重新 render 会带上 tag、status 等）
+      Storage.saveCurrent();
+      RightPanel.render();
+    };
+
+    // R3: 取消逻辑
+    const cancel = () => {
+      this._cancelNoteEdit(wrap, noteEl);
+    };
+
+    // R2: 快捷键
+    const keyHandler = (e) => {
+      // Ctrl/Cmd + Enter → 保存
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        save();
+        return;
+      }
+      // Esc → 取消
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        cancel();
+      }
+    };
+    textarea.addEventListener('keydown', keyHandler);
+
+    // R3: 点击卡片外部空白处 → 取消
+    const outsideHandler = (e) => {
+      if (wrap.contains(e.target)) return;     // 点编辑器内部
+      if (noteEl.contains(e.target)) return;   // 点原来的 noteEl（已隐藏）
+      cancel();
+      document.removeEventListener('mousedown', outsideHandler, true);
+    };
+    setTimeout(() => document.addEventListener('mousedown', outsideHandler, true), 0);
+  },
+
+  _cancelNoteEdit(wrap, noteEl) {
+    wrap.remove();
+    noteEl.classList.remove('editing');
+    noteEl.style.display = '';
+    noteEl.focus();
+  },
+
+  /* R5: 点击 chip 弹出标签修改下拉菜单 */
+  _showTagMenu(anchor, ann) {
+    // 关闭已有的 tag 菜单
+    document.querySelectorAll('.tag-menu').forEach(m => m.remove());
+
+    const menu = document.createElement('div');
+    menu.className = 'tag-menu';
+
+    // 生成选项
+    TAG_OPTIONS.forEach(t => {
+      const item = document.createElement('div');
+      item.className = 'tag-menu-item';
+      if (ann.tag === t.key) item.classList.add('active');
+      item.innerHTML = `<span class="dot" style="background:${t.color}"></span>${t.label}`;
+      item.onclick = (e) => {
+        e.stopPropagation();
+        Annotations.updateTag(ann.id, t.key);
+        document.querySelectorAll('.tag-menu').forEach(m => m.remove());
+        RightPanel.render();
+        Storage.saveCurrent();
+      };
+      menu.appendChild(item);
+    });
+
+    // 清除标签选项
+    const clearItem = document.createElement('div');
+    clearItem.className = 'tag-menu-item clear';
+    clearItem.textContent = '✕ 清除标签';
+    clearItem.onclick = (e) => {
+      e.stopPropagation();
+      Annotations.updateTag(ann.id, null);
+      document.querySelectorAll('.tag-menu').forEach(m => m.remove());
+      RightPanel.render();
+      Storage.saveCurrent();
+    };
+    menu.appendChild(clearItem);
+
+    // 定位到 chip 下方
+    const rect = anchor.getBoundingClientRect();
+    menu.style.left = rect.left + 'px';
+    menu.style.top = (rect.bottom + 4) + 'px';
+    document.body.appendChild(menu);
+
+    // 点击其他地方关闭
+    const closeHandler = (e) => {
+      if (e.target.closest('.tag-menu')) return;
+      if (e.target === anchor) return; // chip 的 onclick 已 stopPropagation，但这里保险起见
+      menu.remove();
+      document.removeEventListener('click', closeHandler, true);
+    };
+    setTimeout(() => document.addEventListener('click', closeHandler, true), 0);
   },
 
   /* 在已渲染的 note HTML 上，根据子批注的 noteOffset 叠加高亮 mark */
@@ -2191,6 +2501,8 @@ document.getElementById('file-input').onchange = async (e) => {
         }
       );
       function AfterImport() {
+        // R7: 旧数据补 tag 字段
+        Storage._normalizeTags(state.annotations);
         Annotations.refreshTopLevelStatus();
         Highlight.refreshAll();
         RightPanel.render();
@@ -2219,6 +2531,12 @@ document.getElementById('search-input').oninput = (e) => {
   RightPanel.render();
 };
 
+/* R8: 标签筛选下拉（不持久化 R9） */
+document.getElementById('tag-filter').onchange = (e) => {
+  state.tagFilter = e.target.value;
+  RightPanel.render();
+};
+
 /* ==================== Layer 6.2: 快捷键 ==================== */
 document.addEventListener('keydown', (e) => {
   // Ctrl/⌘ + S
@@ -2243,9 +2561,11 @@ document.addEventListener('keydown', (e) => {
     const overlay = document.querySelector('.modal-overlay');
     if (overlay) overlay.remove();
     // 清空搜索
-    if (state.searchKeyword) {
+    if (state.searchKeyword || state.tagFilter) {
       state.searchKeyword = '';
+      state.tagFilter = '';
       document.getElementById('search-input').value = '';
+      document.getElementById('tag-filter').value = '';
       RightPanel.render();
     }
   }
@@ -3181,6 +3501,85 @@ Editor.init();
 // 但 Files.updateSwitcher 已经自动调了 DirectoryTree.render()，这里主要是 initSidebar 的显隐状态恢复
 DirectoryTree.initSidebar();
 Guideline.init();
+
+/* ==================== Layer 8: 拖拽分割线 ==================== */
+const Splitter = {
+  RATIO_MIN: 30,
+  RATIO_MAX: 80,
+  RATIO_DEFAULT: 60,
+
+  init() {
+    const el = document.getElementById('splitter');
+    if (!el) return;
+    // 启动恢复上次位置
+    this._apply(this._load());
+
+    // 拖拽：mousedown 注册全局 mousemove/mouseup
+    el.addEventListener('mousedown', (e) => {
+      e.preventDefault();   // R8: 防止文字选中
+      e.stopPropagation();  // 不影响子元素事件
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+
+      const onMove = (ev) => {
+        ev.preventDefault();
+        this._apply(this._calcRatio(ev.clientX));
+      };
+      const onUp = () => {
+        // R9: 松开鼠标时清理监听器
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        this._save(state.splitRatio);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+
+    // R5: 双击恢复默认 60:40
+    el.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this._apply(this.RATIO_DEFAULT);
+      this._save(this.RATIO_DEFAULT);
+    });
+  },
+
+  // 根据鼠标 X 计算左栏百分比（排除 sidebar 宽度与 splitter 宽度）
+  _calcRatio(clientX) {
+    const main = document.getElementById('main');
+    const rect = main.getBoundingClientRect();
+    const sidebar = document.getElementById('sidebar');
+    const sbHidden = !sidebar || sidebar.classList.contains('sidebar-hidden');
+    const sbWidth = sbHidden ? 0 : sidebar.getBoundingClientRect().width;
+    const usable = rect.width - sbWidth - 6; // 6 = splitter 宽度
+    if (usable <= 0) return this.RATIO_DEFAULT;
+    const rel = clientX - rect.left - sbWidth;
+    let r = (rel / usable) * 100;
+    if (r < this.RATIO_MIN) r = this.RATIO_MIN;
+    if (r > this.RATIO_MAX) r = this.RATIO_MAX;
+    return r;
+  },
+
+  _apply(ratio) {
+    state.splitRatio = ratio;
+    document.getElementById('main').style.setProperty('--left-ratio', ratio);
+  },
+
+  _load() {
+    try {
+      const v = parseFloat(localStorage.getItem(SPLIT_RATIO_KEY));
+      if (isNaN(v)) return this.RATIO_DEFAULT;
+      return Math.max(this.RATIO_MIN, Math.min(this.RATIO_MAX, v));
+    } catch (e) { return this.RATIO_DEFAULT; }
+  },
+
+  _save(ratio) {
+    try { localStorage.setItem(SPLIT_RATIO_KEY, String(ratio)); } catch (e) {}
+  },
+};
+Splitter.init();
 </script>
 
 </body>
