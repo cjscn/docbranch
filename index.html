@@ -1,0 +1,2768 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>文档递归批注工具</title>
+<style>
+/* ========== 白色主题 ========== */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+body { background: #ffffff; color: #24292f; display: flex; flex-direction: column; }
+
+/* ========== 顶部工具栏 ========== */
+#toolbar {
+  height: 44px; background: #f6f8fa; border-bottom: 1px solid #d0d7de;
+  display: flex; align-items: center; padding: 0 16px; gap: 12px; flex-shrink: 0;
+}
+#toolbar .brand { font-weight: 600; color: #0969da; font-size: 14px; }
+#toolbar .sep { width: 1px; height: 20px; background: #d0d7de; }
+#toolbar button {
+  background: #f6f8fa; border: 1px solid #d0d7de; color: #24292f; padding: 6px 12px;
+  border-radius: 4px; cursor: pointer; font-size: 12px; transition: all .15s;
+}
+#toolbar button:hover { background: #eaeef2; }
+#toolbar button.active { background: #0969da; color: #fff; border-color: #0969da; }
+#toolbar .status { margin-left: auto; font-size: 11px; color: #57606a; }
+
+/* ========== 主区域 ========== */
+#main { display: flex; flex: 1; min-height: 0; }
+#left { width: 60%; display: flex; flex-direction: column; min-width: 0; }
+#right { width: 40%; background: #f6f8fa; display: flex; flex-direction: column; border-left: 1px solid #d0d7de; min-width: 0; }
+
+/* ========== Monaco 编辑器容器 ========== */
+#monaco-container { flex: 1; min-height: 0; }
+
+/* ========== 右栏工具条 ========== */
+#right-toolbar {
+  padding: 10px 14px; border-bottom: 1px solid #d0d7de; display: flex; flex-wrap: wrap;
+  gap: 8px; align-items: center; flex-shrink: 0; background: #f6f8fa;
+}
+#right-toolbar input[type="text"] {
+  flex: 1; min-width: 120px; background: #fff; border: 1px solid #d0d7de;
+  color: #24292f; padding: 6px 10px; border-radius: 4px; font-size: 12px; outline: none;
+}
+#right-toolbar input[type="text"]:focus { border-color: #0969da; }
+#right-toolbar .stats { font-size: 11px; color: #57606a; white-space: nowrap; }
+
+/* ========== 批注卡片列表 ========== */
+#annotation-list { flex: 1; overflow-y: auto; padding: 12px 10px; background: #f6f8fa; }
+#annotation-list:empty::before {
+  content: '暂无批注，选中文字右键添加吧 ✍️';
+  color: #57606a; font-size: 13px; display: block; text-align: center; padding: 40px 0;
+}
+
+/* ========== 批注卡片 ========== */
+.card {
+  background: #fff; border: 1px solid #d0d7de; border-radius: 8px;
+  margin-bottom: 10px; padding: 12px 14px; position: relative;
+  transition: box-shadow .15s;
+}
+.card:hover { box-shadow: 0 2px 12px rgba(9,105,218,0.1); }
+.card.active { box-shadow: 0 0 0 2px #0969da; }
+.card.orphaned { opacity: 0.5; }
+.card.stale .source-text { background: rgba(188,127,48,0.15); }
+
+.card .orphaned-tag {
+  display: inline-block; background: #bf8700; color: #fff; font-size: 10px;
+  padding: 2px 6px; border-radius: 3px; margin-bottom: 6px; font-weight: 600;
+}
+.card .stale-tag {
+  display: inline-block; background: #bf8700; color: #fff; font-size: 10px;
+  padding: 2px 6px; border-radius: 3px; margin-bottom: 6px; font-weight: 600;
+}
+
+.card .source-text {
+  background: rgba(9,105,218,0.12); border-radius: 4px; padding: 4px 8px;
+  font-size: 12px; color: #0969da; margin-bottom: 8px; word-break: break-all;
+  cursor: pointer; user-select: none;
+}
+.card .source-text:hover { background: rgba(9,105,218,0.22); }
+
+.card .note-content {
+  font-size: 13px; line-height: 1.6; color: #24292f;
+}
+.card .note-content p { margin: 0 0 6px 0; }
+.card .note-content p:last-child { margin-bottom: 0; }
+.card .note-content code {
+  background: rgba(175,184,193,0.2); padding: 1px 5px; border-radius: 3px; font-family: "Fira Code", Consolas, monospace;
+  font-size: 12px; color: #1a7f37;
+}
+.card .note-content pre {
+  background: #f6f8fa; padding: 10px; border-radius: 5px; overflow-x: auto; margin: 6px 0; border: 1px solid #d0d7de;
+}
+.card .note-content pre code { background: none; padding: 0; color: #24292f; }
+.card .note-content blockquote {
+  border-left: 3px solid #d0d7de; padding-left: 10px; color: #57606a; margin: 6px 0;
+}
+.card .note-content ul, .card .note-content ol { padding-left: 18px; margin: 4px 0; }
+
+.card .note-content mark.sub-anchor {
+  background: rgba(9,105,218,0.2); color: #0969da; border-radius: 2px; cursor: pointer;
+  border-bottom: 1px dashed #0969da;
+}
+.card .note-content mark.sub-anchor:hover { background: rgba(9,105,218,0.35); }
+
+.card .actions {
+  position: absolute; top: 10px; right: 12px; display: flex; gap: 4px;
+}
+.card .actions button {
+  background: transparent; border: none; color: #57606a; cursor: pointer;
+  font-size: 14px; padding: 2px 4px; border-radius: 3px; transition: all .15s;
+}
+.card .actions button:hover { color: #0969da; background: #eaeef2; }
+.card .actions .delete:hover { color: #cf222e; }
+.card .actions .locate:hover { color: #1a7f37; }
+
+.card .stale-fix {
+  font-size: 11px; color: #bf8700; margin-top: 6px; cursor: pointer;
+  display: inline-block; padding: 2px 6px; border-radius: 3px; background: rgba(188,127,48,0.1);
+}
+.card .stale-fix:hover { background: rgba(188,127,48,0.2); }
+
+/* ========== 子批注缩进 ========== */
+.children {
+  padding-left: 16px; border-left: 2px solid #0969da; margin-left: 8px;
+  overflow: hidden; transition: max-height 0.25s ease;
+}
+.children.collapsed { max-height: 0 !important; padding-top: 0; padding-bottom: 0; border-left-color: transparent; }
+
+/* 折叠 toggle 按钮 —— 挂在 card 上 */
+.card .collapse-toggle {
+  position: absolute; top: 10px; right: 36px; background: transparent;
+  border: none; cursor: pointer; font-size: 14px; color: #57606a;
+  padding: 2px 4px; border-radius: 3px; transition: all .15s;
+  display: none;
+}
+.card.has-children .collapse-toggle { display: inline-block; }
+.card .collapse-toggle:hover { color: #0969da; background: #eaeef2; }
+
+/* ========== 多文件切换器 ========== */
+.file-switcher { display: flex; gap: 4px; align-items: center; }
+.file-switcher select {
+  background: #fff; border: 1px solid #d0d7de; border-radius: 4px;
+  padding: 5px 8px; font-size: 12px; color: #24292f; cursor: pointer;
+  min-width: 140px; max-width: 200px; outline: none;
+}
+.file-switcher select:focus { border-color: #0969da; }
+.file-switcher button {
+  background: #f6f8fa; border: 1px solid #d0d7de; color: #24292f;
+  width: 26px; height: 28px; border-radius: 4px; cursor: pointer; font-size: 13px;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.file-switcher button:hover { background: #0969da; color: #fff; border-color: #0969da; }
+
+/* ========== 弹窗 ========== */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+}
+.modal {
+  background: #fff; border: 1px solid #d0d7de; border-radius: 10px;
+  padding: 20px; width: 480px; max-width: 90vw; box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+}
+.modal h3 { color: #0969da; font-size: 15px; margin-bottom: 12px; }
+.modal .selected-preview {
+  background: rgba(9,105,218,0.12); border-radius: 4px; padding: 6px 10px;
+  font-size: 12px; color: #0969da; margin-bottom: 12px; word-break: break-all;
+}
+.modal textarea {
+  width: 100%; min-height: 120px; background: #fff; border: 1px solid #d0d7de;
+  color: #24292f; padding: 10px; border-radius: 6px; font-size: 13px;
+  font-family: inherit; resize: vertical; outline: none;
+}
+.modal textarea:focus { border-color: #0969da; box-shadow: 0 0 0 2px rgba(9,105,218,0.2); }
+.modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+.modal .modal-actions button {
+  padding: 7px 16px; border-radius: 5px; border: 1px solid #d0d7de; cursor: pointer; font-size: 13px;
+  background: #f6f8fa; color: #24292f;
+}
+.modal .btn-primary { background: #0969da; color: #fff; border-color: #0969da; }
+.modal .btn-primary:hover { background: #0860c1; }
+.modal .btn-secondary:hover { background: #eaeef2; }
+.modal .btn-danger { background: #cf222e; color: #fff; border-color: #cf222e; }
+.modal .btn-danger:hover { background: #b81d27; }
+
+/* ========== 自定义右键菜单 ========== */
+.custom-context-menu {
+  position: fixed; background: #fff; border: 1px solid #d0d7de; border-radius: 6px;
+  padding: 4px; z-index: 2000; box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  min-width: 160px;
+}
+.custom-context-menu .menu-item {
+  padding: 7px 14px; font-size: 13px; color: #24292f; cursor: pointer;
+  border-radius: 4px; transition: all .1s;
+}
+.custom-context-menu .menu-item:hover { background: #0969da; color: #fff; }
+
+/* ========== Monaco 覆盖样式 ========== */
+.monaco-editor { background: #fff !important; }
+.monaco-editor .my-annotation {
+  background: rgba(9,105,218,0.18); border-bottom: 2px solid #0969da;
+  border-radius: 2px;
+}
+.monaco-editor .my-annotation-stale {
+  background: rgba(188,127,48,0.18); border-bottom: 2px solid #bf8700;
+  border-radius: 2px;
+}
+.monaco-editor .my-annotation-orphaned {
+  /* 不显示高亮 */
+}
+
+/* ========== GitHub Sync 弹窗增强 ========== */
+.gh-config-form label {
+  display: block;
+  font-size: 12px;
+  color: #57606a;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+.gh-config-form input[type="text"],
+.gh-config-form input[type="password"] {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid #d0d7de;
+  border-radius: 5px;
+  font-size: 13px;
+  margin-bottom: 12px;
+  outline: none;
+  background: #fff;
+  color: #24292f;
+  font-family: inherit;
+}
+.gh-config-form input:focus { border-color: #0969da; box-shadow: 0 0 0 2px rgba(9,105,218,0.15); }
+.gh-config-form .field-hint {
+  font-size: 11px;
+  color: #57606a;
+  margin: -8px 0 10px 0;
+  line-height: 1.4;
+}
+.gh-config-form .test-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 4px;
+  margin-bottom: 12px;
+}
+.gh-config-form .test-result {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  display: none;
+}
+.gh-config-form .test-result.success { display: inline-block; background: rgba(26,127,55,0.12); color: #1a7f37; }
+.gh-config-form .test-result.error { display: inline-block; background: rgba(207,34,46,0.12); color: #cf222e; }
+
+/* 提交进度弹窗 */
+.gh-progress { font-size: 13px; }
+.gh-progress .file-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-family: "Fira Code", Consolas, monospace;
+}
+.gh-progress .file-line.status-ok { background: rgba(26,127,55,0.08); color: #1a7f37; }
+.gh-progress .file-line.status-fail { background: rgba(207,34,46,0.08); color: #cf222e; }
+.gh-progress .file-line.status-wait { color: #57606a; }
+.gh-progress .file-line .status-icon { width: 16px; text-align: center; }
+.gh-progress .commit-link {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: rgba(9,105,218,0.1);
+  border-radius: 5px;
+  font-size: 12px;
+}
+.gh-progress .commit-link a { color: #0969da; text-decoration: none; font-weight: 500; }
+.gh-progress .commit-link a:hover { text-decoration: underline; }
+.gh-progress .final-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+/* 冲突处理弹窗 */
+.gh-conflict { font-size: 13px; line-height: 1.6; }
+.gh-conflict .conflict-file-list {
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin: 10px 0;
+  max-height: 120px;
+  overflow-y: auto;
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 12px;
+}
+.gh-conflict .radio-group { margin-top: 10px; }
+.gh-conflict .radio-group label {
+  display: block;
+  padding: 6px 0;
+  cursor: pointer;
+  font-size: 13px;
+  color: #24292f;
+}
+.gh-conflict .radio-group label:hover { color: #0969da; }
+.gh-conflict .radio-group input[type="radio"] { margin-right: 8px; }
+
+/* 大弹窗（提交设置/进度） */
+.modal-lg { width: 580px; }
+
+/* 加载中按钮禁用状态 */
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ========== 目录树侧边栏 ========== */
+#btn-toggle-sidebar {
+  background: transparent; border: none; color: #24292f;
+  font-size: 16px; cursor: pointer; padding: 4px 8px; border-radius: 4px;
+  transition: all .15s;
+}
+#btn-toggle-sidebar:hover { background: #eaeef2; color: #0969da; }
+#btn-toggle-sidebar.active { background: #0969da; color: #fff; }
+
+#sidebar {
+  width: 220px;
+  background: #f6f8fa;
+  border-right: 1px solid #d0d7de;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+  transition: width .25s ease, opacity .25s ease;
+}
+#sidebar.sidebar-hidden {
+  width: 0;
+  opacity: 0;
+  border-right: none;
+}
+#sidebar.sidebar-hidden > * { display: none; }
+
+.sidebar-header {
+  padding: 10px 14px;
+  border-bottom: 1px solid #d0d7de;
+  flex-shrink: 0;
+  background: #f6f8fa;
+}
+.sidebar-title { font-size: 12px; font-weight: 600; color: #24292f; }
+.sidebar-hint { display: none; } /* R15: 展开时的 hint 先隐藏，纯图标 */
+
+.directory-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+  font-size: 13px;
+}
+.directory-tree:empty::before {
+  content: '暂无文件';
+  display: block;
+  text-align: center;
+  color: #57606a;
+  font-size: 12px;
+  padding: 20px 0;
+}
+
+/* 目录节点 */
+.tree-folder {
+  cursor: pointer;
+  user-select: none;
+}
+.tree-folder-header {
+  padding: 5px 10px 5px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #24292f;
+  font-weight: 500;
+  transition: background .1s;
+}
+.tree-folder-header:hover { background: rgba(9,105,218,0.08); }
+.tree-folder-header .folder-icon {
+  font-size: 12px; width: 12px; text-align: center; color: #57606a;
+}
+.tree-folder-header .folder-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tree-folder-header .folder-count {
+  font-size: 10px; color: #57606a; background: rgba(0,0,0,0.06);
+  padding: 1px 6px; border-radius: 10px; font-weight: 400;
+}
+.tree-folder-children { padding-left: 16px; }
+
+/* 文件节点 */
+.tree-file {
+  padding: 4px 10px 4px 28px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: #24292f;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background .1s;
+  position: relative;
+}
+.tree-file:hover { background: rgba(9,105,218,0.08); }
+.tree-file.file-active {
+  background: rgba(9,105,218,0.12);
+  color: #0969da;
+  font-weight: 600;
+}
+.tree-file.file-active::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: #0969da;
+  border-radius: 0 2px 2px 0;
+}
+.tree-file .file-icon { font-size: 12px; flex-shrink: 0; }
+.tree-file .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.tree-file .file-path {
+  font-size: 10px; color: #8c959f; margin-left: auto;
+  font-family: "Fira Code", Consolas, monospace;
+}
+
+/* 根目录文件（无父目录）—— 左缩进为 10px（和目录 header 对齐） */
+.tree-file.tree-root-file { padding-left: 14px; }
+</style>
+</head>
+<body>
+
+<!-- 顶部工具栏 -->
+<div id="toolbar">
+  <button id="btn-toggle-sidebar" title="目录树侧边栏">☰</button>
+  <span class="brand">📝 文档递归批注工具</span>
+  <span class="sep"></span>
+
+  <!-- ========== 多文件切换器 ========== -->
+  <div class="file-switcher">
+    <select id="file-select" title="切换文件"></select>
+    <button id="btn-new-file" title="新建文件">＋</button>
+    <button id="btn-rename-file" title="重命名/改路径">✎</button>
+    <button id="btn-delete-file" title="删除当前文件">🗑️</button>
+  </div>
+  <span class="sep"></span>
+
+  <button id="btn-readonly" title="切换只读/编辑">✏️ 编辑模式</button>
+  <button id="btn-toggle-highlight" title="全局高亮开关">👁️ 高亮</button>
+  <span class="sep"></span>
+  <button id="btn-export" title="导出 JSON (Ctrl+Shift+E)">📤 导出</button>
+  <button id="btn-import" title="导入 JSON (Ctrl+Shift+I)">📥 导入</button>
+  <input type="file" id="file-input" accept=".json" style="display:none">
+  <button id="btn-clear" title="清空全部批注">🗑️ 清空</button>
+  <span class="sep"></span>
+  <button id="btn-gh-push" title="一键提交到 GitHub">☁️ 一键提交</button>
+  <button id="btn-gh-pull" title="从 GitHub 拉取最新">📥 拉取</button>
+  <button id="btn-gh-settings" title="GitHub 设置">⚙️</button>
+  <span class="status" id="save-status">已保存</span>
+</div>
+
+<!-- 主区域 -->
+<div id="main">
+  <!-- ========== 目录树侧边栏 ========== -->
+  <div id="sidebar" class="sidebar-hidden">
+    <div class="sidebar-header">
+      <span class="sidebar-title">📂 资源管理器</span>
+      <span class="sidebar-hint">点击目录/文件切换</span>
+    </div>
+    <div id="directory-tree" class="directory-tree"></div>
+  </div>
+
+  <!-- 左栏 -->
+  <div id="left">
+    <div id="monaco-container"></div>
+  </div>
+
+  <!-- 右栏 -->
+  <div id="right">
+    <div id="right-toolbar">
+      <input type="text" id="search-input" placeholder="🔍 搜索批注..." />
+      <span class="stats" id="stats">0 条批注</span>
+    </div>
+    <div id="annotation-list"></div>
+  </div>
+</div>
+
+<!-- 自定义右键菜单容器 -->
+<div id="ctx-menu-container"></div>
+
+<!-- 仅 Monaco Editor AMD Loader（其他依赖全内联，避免 ORB 拦截） -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.js"></script>
+
+<script>
+/* ================================================================
+ *  文档递归批注工具 —— 主脚本
+ *  分层结构：
+ *    Layer 0 — 常量与依赖声明
+ *    Layer 1 — 数据存储层（localStorage CRUD、防抖）
+ *    Layer 2 — 批注数据模型（树形 CRUD、UUID、状态检测）
+ *    Layer 3 — Monaco Editor 初始化 + 高亮装饰管理
+ *    Layer 4 — 弹窗与右键菜单
+ *    Layer 5 — 右栏卡片树形渲染 + 子批注交互
+ *    Layer 6 — 搜索过滤、全局开关、导入导出、快捷键
+ *    Layer 7 — 启动恢复流程
+ * ================================================================ */
+
+/* ==================== Layer 0: 常量 ==================== */
+const INDEX_KEY = 'doc-branch-index-v1';           // 文件索引 key
+const FILE_KEY_PREFIX = 'doc-branch-files/';       // 每个文件的 key 前缀
+const DATA_VERSION = 2;                             // 数据格式版本（从 1 升到 2，支持多文件）
+const DEFAULT_DOC = `# 示例文档: 号码筛选规则
+
+不选任何条件 | 该维度不过滤, 全部 80 个号码通过.
+
+## 规则说明
+
+筛选规则共包含 8 个维度, 每个维度可独立配置过滤条件.
+
+> 💡 选中任意文字右键添加批注, 批注内的词语可继续递归批注.
+`;
+
+/* 生成 UUID v4（内联实现） */
+function uuidv4() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+/* 极简 Markdown 渲染器（支持 **加粗**、`代码`、> 引用、- 列表、1. 有序列表、换行） */
+function simpleMarkdown(md) {
+  if (!md) return '';
+  let lines = md.split('\n');
+  let html = '';
+  let inUl = false, inOl = false, inCode = false, codeBuf = '';
+
+  const closeLists = () => {
+    if (inUl) { html += '</ul>'; inUl = false; }
+    if (inOl) { html += '</ol>'; inOl = false; }
+  };
+
+  for (const line of lines) {
+    // 代码块
+    if (line.trim().startsWith('```')) {
+      if (!inCode) { closeLists(); inCode = true; codeBuf = ''; }
+      else { inCode = false; html += `<pre><code>${escapeHtml(codeBuf)}</code></pre>`; }
+      continue;
+    }
+    if (inCode) { codeBuf += line + '\n'; continue; }
+
+    // 引用
+    if (line.trim().startsWith('>')) {
+      closeLists();
+      const text = line.trim().replace(/^>\s*/, '');
+      html += `<blockquote>${inlineMd(text)}</blockquote>`;
+      continue;
+    }
+
+    // 无序列表
+    if (/^\s*[-*]\s+/.test(line)) {
+      if (!inUl) { closeLists(); html += '<ul>'; inUl = true; }
+      html += `<li>${inlineMd(line.replace(/^\s*[-*]\s+/, ''))}</li>`;
+      continue;
+    }
+    // 有序列表
+    if (/^\s*\d+\.\s+/.test(line)) {
+      if (!inOl) { closeLists(); html += '<ol>'; inOl = true; }
+      html += `<li>${inlineMd(line.replace(/^\s*\d+\.\s+/, ''))}</li>`;
+      continue;
+    }
+
+    // 空行
+    if (line.trim() === '') {
+      closeLists();
+      html += '<p></p>';
+      continue;
+    }
+
+    // 普通段落
+    closeLists();
+    html += `<p>${inlineMd(line)}</p>`;
+  }
+  closeLists();
+  if (inCode) html += `<pre><code>${escapeHtml(codeBuf)}</code></pre>`;
+  return html;
+}
+
+/* Markdown 行内语法（**加粗**、`代码`） */
+function inlineMd(text) {
+  // 转义 HTML 先
+  let s = escapeHtml(text);
+  // **bold**
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // *italic*
+  s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  // `code`
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+  return s;
+}
+
+/* HTML 转义（安全渲染） */
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+/* 全局状态 */
+const state = {
+  monaco: null,              // Monaco Editor 实例
+  annotations: [],           // 当前文件的批注树
+  decorations: [],           // Monaco 装饰器 ids
+  showHighlight: true,       // 全局高亮开关
+  readOnly: false,            // 只读模式
+  searchKeyword: '',          // 搜索关键词
+  collapsedIds: new Set(),   // 被折叠的批注 id 集合
+
+  /* ====== 多文件新增 ====== */
+  currentFileId: null,       // 当前激活的文件 id
+  files: [],                 // 文件索引数组 [{id, name, docPath}]
+  switchingFile: false,      // 文件切换中标志（debounceSave 检查此标志跳过）
+};
+
+/* ==================== Layer 1: 数据存储层（多文件两层架构） ==================== */
+const Storage = {
+  /* ---- 索引层 ---- */
+  saveIndex() {
+    const idx = {
+      version: DATA_VERSION,
+      currentFileId: state.currentFileId,
+      files: state.files.map(f => ({ id: f.id, name: f.name, docPath: f.docPath })),
+    };
+    localStorage.setItem(INDEX_KEY, JSON.stringify(idx));
+  },
+
+  loadIndex() {
+    try {
+      const raw = localStorage.getItem(INDEX_KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (!data || data.version !== DATA_VERSION) return null;
+      return data;
+    } catch (e) {
+      console.error('读取索引失败:', e);
+      return null;
+    }
+  },
+
+  /* ---- 文件数据层（每个文件独立 key） ---- */
+  _fileKey(id) { return FILE_KEY_PREFIX + id; },
+
+  saveCurrent() {
+    if (!state.currentFileId) return;
+    const data = {
+      version: DATA_VERSION,
+      docContent: state.monaco ? state.monaco.getValue() : '',
+      annotations: state.annotations,
+      collapsedIds: Array.from(state.collapsedIds),
+    };
+    try {
+      localStorage.setItem(this._fileKey(state.currentFileId), JSON.stringify(data));
+      this.saveIndex(); // 索引也要保存（currentFileId 可能变了）
+      UI.setSaveStatus('已保存 ✓');
+    } catch (e) {
+      console.error('保存失败:', e);
+      UI.setSaveStatus('保存失败 ✗');
+    }
+  },
+
+  debounceSave() {
+    if (state.switchingFile) return; // 切换文件期间跳过
+    UI.setSaveStatus('保存中...');
+    clearTimeout(this._timer);
+    this._timer = setTimeout(() => this.saveCurrent(), 500);
+  },
+
+  loadFile(id) {
+    try {
+      const raw = localStorage.getItem(this._fileKey(id));
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (!data || data.version !== DATA_VERSION) return null;
+      return data;
+    } catch (e) {
+      console.error('读取文件数据失败:', e);
+      return null;
+    }
+  },
+
+  /* ---- 文件 CRUD ---- */
+  createFile(name, docPath) {
+    const id = uuidv4();
+    const file = { id, name, docPath };
+    state.files.push(file);
+    // 立即写入空文件数据（用 DEFAULT_DOC 模板）
+    const emptyData = {
+      version: DATA_VERSION,
+      docContent: DEFAULT_DOC,
+      annotations: [],
+      collapsedIds: [],
+    };
+    localStorage.setItem(this._fileKey(id), JSON.stringify(emptyData));
+    this.saveIndex();
+    return file;
+  },
+
+  deleteFile(id) {
+    localStorage.removeItem(this._fileKey(id));
+    state.files = state.files.filter(f => f.id !== id);
+    this.saveIndex();
+  },
+
+  renameFile(id, name, docPath) {
+    const f = state.files.find(f => f.id === id);
+    if (f) { f.name = name; f.docPath = docPath; this.saveIndex(); }
+  },
+
+  switchToFile(id) {
+    // 1. 先保存当前文件
+    if (state.currentFileId) this.saveCurrent();
+    // 2. 标记切换中（防止 debounceSave 干扰）
+    state.switchingFile = true;
+    state.currentFileId = id;
+    // 3. 加载目标文件数据
+    const data = this.loadFile(id);
+    const docContent = data ? data.docContent : DEFAULT_DOC;
+    state.annotations = data ? data.annotations : [];
+    state.collapsedIds = new Set(data && Array.isArray(data.collapsedIds) ? data.collapsedIds : []);
+    // 4. Monaco setValue（会触发 didChangeModelContent，但 switchingFile=true 跳过保存）
+    state.monaco.setValue(docContent);
+    // 5. 刷新 UI
+    Annotations.refreshTopLevelStatus();
+    Highlight.refreshAll();
+    RightPanel.render();
+    Files.updateSwitcher();
+    // 6. 解除切换标志（放 setTimeout 保证 didChange 事件已处理完）
+    setTimeout(() => { state.switchingFile = false; }, 50);
+    UI.setSaveStatus(`已切换到「${state.files.find(f=>f.id===id)?.name || '未知'}」`);
+  },
+
+  /* ---- 迁移：从 v1 单文件升级到 v2 多文件 ---- */
+  migrateV1toV2() {
+    const OLD_KEY = 'doc-branch-snapshot-v1';
+    const oldRaw = localStorage.getItem(OLD_KEY);
+    if (!oldRaw) return false;
+    try {
+      const oldData = JSON.parse(oldRaw);
+      if (oldData.version !== 1) return false;
+      // 创建一个默认文件承载旧数据
+      const file = this.createFile('未命名文档', 'docs/未命名.md');
+      // 把旧数据写入新 key
+      const migrated = {
+        version: DATA_VERSION,
+        docContent: oldData.docContent || DEFAULT_DOC,
+        annotations: oldData.annotations || [],
+        collapsedIds: oldData.collapsedIds || [],
+      };
+      localStorage.setItem(this._fileKey(file.id), JSON.stringify(migrated));
+      // 删掉旧 key
+      localStorage.removeItem(OLD_KEY);
+      console.log('✓ 已从 v1 单文件迁移到 v2 多文件架构');
+      return true;
+    } catch (e) {
+      console.error('迁移失败:', e);
+      return false;
+    }
+  },
+};
+
+/* ==================== Layer 2: 批注数据模型 ==================== */
+const Annotations = {
+  /* 生成 UUID */
+  newId() { return uuidv4(); },
+
+  /* 添加一级批注 */
+  addTopLevel(range, sourceText, note) {
+    const ann = {
+      id: this.newId(),
+      parentId: null,
+      status: 'active',
+      range: { ...range },
+      sourceText,
+      note,
+      children: [],
+    };
+    state.annotations.push(ann);
+    return ann;
+  },
+
+  /* 添加子批注 —— parentId: 父批注 id, offsetStart/End: 父 note 内字符偏移 */
+  addChild(parentId, noteOffsetStart, noteOffsetEnd, sourceText, note) {
+    const parent = this.findById(parentId);
+    if (!parent) return null;
+    const child = {
+      id: this.newId(),
+      parentId,
+      status: 'active',
+      noteOffsetStart,
+      noteOffsetEnd,
+      sourceText,
+      note,
+      children: [],
+    };
+    parent.children.push(child);
+    return child;
+  },
+
+  /* 递归查找 */
+  findById(id, list = state.annotations) {
+    for (const a of list) {
+      if (a.id === id) return a;
+      const found = this.findById(id, a.children);
+      if (found) return found;
+    }
+    return null;
+  },
+
+  /* 删除（级联） */
+  remove(id, list = state.annotations) {
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].id === id) { list.splice(i, 1); return true; }
+      if (this.remove(id, list[i].children)) return true;
+    }
+    return false;
+  },
+
+  /* 更新一级批注的 sourceText 为当前 Range 实际文本 */
+  confirmUpdate(id) {
+    const ann = this.findById(id);
+    if (!ann || ann.status === 'orphaned') return;
+    const range = ann.range;
+    const model = state.monaco.getModel();
+    const actual = model.getValueInRange(range);
+    ann.sourceText = actual;
+    ann.status = 'active';
+  },
+
+  /* 重新检测所有一级批注的状态 */
+  refreshTopLevelStatus() {
+    const model = state.monaco.getModel();
+    const lineCount = model.getLineCount();
+    for (const ann of state.annotations) {
+      const r = ann.range;
+      // orphaned: 行号越界，或 sourceText 为空字符串且位置越界
+      if (r.startLineNumber > lineCount || r.endLineNumber > lineCount) {
+        ann.status = 'orphaned';
+        continue;
+      }
+      const actual = model.getValueInRange(r);
+      if (!actual || actual === '') {
+        ann.status = 'orphaned';
+      } else if (actual !== ann.sourceText) {
+        ann.status = 'stale';
+      } else {
+        ann.status = 'active';
+      }
+    }
+  },
+
+  /* 统计 */
+  getStats() {
+    let top = state.annotations.length;
+    let sub = 0;
+    let depth = 1;
+    const walk = (list, d) => {
+      if (d > depth) depth = d;
+      for (const a of list) {
+        sub += a.children.length;
+        walk(a.children, d + 1);
+      }
+    };
+    walk(state.annotations, 1);
+    return { total: top + sub, top, sub, depth };
+  },
+};
+
+/* ==================== Layer 3: Monaco Editor + 高亮 ==================== */
+const Editor = {
+  init() {
+    // Monaco Worker 环境配置（CDN 加载需要显式指定）
+    window.MonacoEnvironment = {
+      getWorkerUrl: function(workerId, label) {
+        return 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/base/worker/workerMain.js';
+      }
+    };
+    require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
+    require(
+      ['vs/editor/editor.main'],
+      () => this.onReady(),
+      (err) => console.error('Monaco 加载失败:', err)
+    );
+  },
+
+  onReady() {
+    /* ====== 多文件初始化 ====== */
+    // 1. 先尝试从 v1 单文件迁移
+    Storage.migrateV1toV2();
+
+    // 2. 加载文件索引
+    let idx = Storage.loadIndex();
+    if (!idx || !idx.files || idx.files.length === 0) {
+      // 无索引 → 首次打开，创建默认文件
+      const f = Storage.createFile('未命名文档', 'docs/未命名.md');
+      idx = { currentFileId: f.id, files: [f] };
+    }
+    state.files = idx.files;
+    state.currentFileId = idx.currentFileId || idx.files[0].id;
+
+    // 3. 加载当前文件数据
+    const currentData = Storage.loadFile(state.currentFileId);
+    const initialContent = currentData ? currentData.docContent : DEFAULT_DOC;
+    state.annotations = currentData ? currentData.annotations : [];
+    state.collapsedIds = new Set(currentData && Array.isArray(currentData.collapsedIds) ? currentData.collapsedIds : []);
+
+    state.monaco = monaco.editor.create(document.getElementById('monaco-container'), {
+      value: initialContent,
+      language: 'markdown',
+      theme: 'vs',
+      fontFamily: '"Fira Code", Consolas, "Microsoft YaHei", monospace',
+      fontSize: 14,
+      minimap: { enabled: false },
+      automaticLayout: true,
+      wordWrap: 'on',
+      scrollBeyondLastLine: false,
+      unicodeHighlight: { ambiguousCharacters: false },
+    });
+
+    // 注册右键菜单
+    this.registerContextMenu();
+
+    // 内容变更监听 —— 防抖保存 + 刷新高亮 + 状态检测
+    state.monaco.onDidChangeModelContent(() => {
+      Annotations.refreshTopLevelStatus();
+      Highlight.refreshAll();
+      RightPanel.render();
+      Storage.debounceSave();
+    });
+
+    // 恢复初始状态
+    Annotations.refreshTopLevelStatus();
+    Highlight.refreshAll();
+    RightPanel.render();
+    Files.updateSwitcher();
+
+    // 状态条
+    UI.setSaveStatus('已就绪');
+  },
+
+  registerContextMenu() {
+    const monaco = state.monaco;
+    monaco.addAction({
+      id: 'add-annotation',
+      label: '添加批注',
+      contextMenuGroupId: 'navigation',
+      contextMenuOrder: 1,
+      run: () => {
+        const sel = monaco.getSelection();
+        if (!sel || sel.isEmpty()) return;
+        const text = monaco.getModel().getValueInRange(sel);
+        Modal.showAddTopLevel(sel, text);
+      },
+    });
+  },
+};
+
+/* 高亮装饰管理 */
+const Highlight = {
+  /* 重新渲染所有一级批注的高亮装饰器 */
+  refreshAll() {
+    if (!state.monaco) return;
+    const decorations = [];
+    if (state.showHighlight) {
+      for (const ann of state.annotations) {
+        if (ann.status === 'orphaned') continue;
+        const cls = ann.status === 'stale' ? 'my-annotation-stale' : 'my-annotation';
+        decorations.push({
+          range: ann.range,
+          options: {
+            className: cls,
+            stickiness: monaco.editor.TrackedRangeStickiness.AlwaysGrowsWhenTypingAtEdges,
+          },
+        });
+      }
+    }
+    state.decorations = state.monaco.deltaDecorations(state.decorations, decorations);
+  },
+
+  /* 滚动到指定 Range */
+  scrollTo(range) {
+    state.monaco.revealRangeInCenter(range);
+    state.monaco.setSelection(range);
+    state.monaco.focus();
+  },
+};
+
+/* ==================== Layer 4: 弹窗与右键菜单 ==================== */
+const Modal = {
+  showAddTopLevel(range, sourceText) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <h3>📝 添加批注</h3>
+        <div class="selected-preview">${UI.escapeHtml(sourceText)}</div>
+        <textarea id="modal-note" placeholder="输入批注说明，支持 Markdown 语法..."></textarea>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="modal-cancel">取消</button>
+          <button class="btn-primary" id="modal-save">保存</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const noteInput = overlay.querySelector('#modal-note');
+    noteInput.focus();
+
+    const close = () => overlay.remove();
+    overlay.querySelector('#modal-cancel').onclick = close;
+
+    overlay.querySelector('#modal-save').onclick = () => {
+      const note = noteInput.value.trim();
+      if (!note) { noteInput.focus(); return; }
+      Annotations.addTopLevel({ ...range }, sourceText, note);
+      close();
+      this._afterAnnotation();
+    };
+  },
+
+  showAddChild(parentId, noteOffsetStart, noteOffsetEnd, sourceText) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <h3>📝 添加子批注</h3>
+        <div class="selected-preview">${UI.escapeHtml(sourceText)}</div>
+        <textarea id="modal-note" placeholder="输入批注说明..."></textarea>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="modal-cancel">取消</button>
+          <button class="btn-primary" id="modal-save">保存</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const noteInput = overlay.querySelector('#modal-note');
+    noteInput.focus();
+
+    const close = () => overlay.remove();
+    overlay.querySelector('#modal-cancel').onclick = close;
+
+    overlay.querySelector('#modal-save').onclick = () => {
+      const note = noteInput.value.trim();
+      if (!note) { noteInput.focus(); return; }
+      Annotations.addChild(parentId, noteOffsetStart, noteOffsetEnd, sourceText, note);
+      close();
+      this._afterAnnotation();
+    };
+  },
+
+  confirm(message, onConfirm) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <h3>⚠️ 确认</h3>
+        <p style="margin-bottom:14px;color:#a9b1d6;">${message}</p>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="modal-cancel">取消</button>
+          <button class="btn-danger" id="modal-ok">确认</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector('#modal-cancel').onclick = close;
+    overlay.querySelector('#modal-ok').onclick = () => { close(); onConfirm(); };
+  },
+
+  /* 导入时选择合并/覆盖 */
+  showImportChoices(onMerge, onReplace) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <h3>📥 导入批注</h3>
+        <p style="margin-bottom:14px;color:#a9b1d6;">如何处理现有批注？</p>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="modal-cancel">取消</button>
+          <button class="btn-secondary" id="modal-merge">保留并合并</button>
+          <button class="btn-primary" id="modal-replace">完全替换</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector('#modal-cancel').onclick = close;
+    overlay.querySelector('#modal-merge').onclick = () => { close(); onMerge(); };
+    overlay.querySelector('#modal-replace').onclick = () => { close(); onReplace(); };
+  },
+
+  _afterAnnotation() {
+    Annotations.refreshTopLevelStatus();
+    Highlight.refreshAll();
+    RightPanel.render();
+    Storage.saveCurrent();
+  },
+
+  /* ====== 多文件新增 ====== */
+  showNewFile(onCreate) {
+    // 收集现有目录（从 docPath 推导）
+    const existingDirs = new Set();
+    for (const f of state.files) {
+      const parts = f.docPath.split('/');
+      parts.pop(); // 去掉文件名
+      if (parts.length > 0) existingDirs.add(parts.join('/') + '/');
+    }
+    // 默认目录：如果已有 docs/ 就用它，否则用第一个目录，都没有就 docs/
+    let defaultDir = 'docs/';
+    if (existingDirs.has('docs/')) defaultDir = 'docs/';
+    else if (existingDirs.size > 0) defaultDir = [...existingDirs][0];
+
+    // 下拉选项：已有目录 + "新建 docs/"（去重）
+    const sortedDirs = [...existingDirs].sort();
+    const extraDirs = [];
+    if (!existingDirs.has('docs/')) extraDirs.push({ value: 'docs/', label: 'docs/ (新建)' });
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <h3>📄 新建文件</h3>
+        <label style="display:block;font-size:12px;color:#57606a;margin-bottom:4px;">所属目录</label>
+        <div style="display:flex;gap:6px;margin-bottom:10px;">
+          <select id="nf-dir" style="flex:1;padding:6px 10px;border:1px solid #d0d7de;border-radius:4px;font-size:13px;">
+            <option value="">(根目录)</option>
+            ${sortedDirs.map(d => `<option value="${d}" ${d === defaultDir ? 'selected' : ''}>${d}</option>`).join('')}
+            ${extraDirs.map(x => `<option value="${x.value}" ${x.value === defaultDir ? 'selected' : ''}>${x.label}</option>`).join('')}
+          </select>
+          <input id="nf-dir-custom" placeholder="或输入新目录..." style="flex:1;padding:6px 10px;border:1px solid #d0d7de;border-radius:4px;font-size:13px;" />
+        </div>
+        <label style="display:block;font-size:12px;color:#57606a;margin-bottom:4px;">文件名 (.md)</label>
+        <input id="fname" style="width:100%;padding:6px 10px;border:1px solid #d0d7de;border-radius:4px;font-size:13px;margin-bottom:4px;" value="未命名.md" />
+        <label style="display:block;font-size:12px;color:#57606a;margin-bottom:4px;">显示名</label>
+        <input id="nf-name" style="width:100%;padding:6px 10px;border:1px solid #d0d7de;border-radius:4px;font-size:13px;margin-bottom:4px;" value="未命名文档" />
+        <label style="display:block;font-size:12px;color:#57606a;margin-bottom:4px;">完整仓库路径（自动合成，可覆盖）</label>
+        <input id="nf-path" style="width:100%;padding:6px 10px;border:1px solid #d0d7de;border-radius:4px;font-size:13px;margin-bottom:14px;background:#f6f8fa;" value="${defaultDir}未命名.md" />
+        <div class="modal-actions">
+          <button class="btn-secondary" id="nf-cancel">取消</button>
+          <button class="btn-primary" id="nf-save">创建</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+
+    // 自动合成完整路径的逻辑
+    const dirSel = overlay.querySelector('#nf-dir');
+    const dirCustom = overlay.querySelector('#nf-dir-custom');
+    const fname = overlay.querySelector('#fname');
+    const fullPath = overlay.querySelector('#nf-path');
+    const recombine = () => {
+      const d = dirCustom.value.trim() || dirSel.value;
+      let n = fname.value.trim() || '未命名.md';
+      if (!n.endsWith('.md')) n += '.md';
+      fullPath.value = (d || '') + n;
+    };
+    dirSel.onchange = recombine;
+    dirCustom.oninput = recombine;
+    fname.oninput = recombine;
+
+    overlay.querySelector('#nf-cancel').onclick = close;
+    overlay.querySelector('#nf-save').onclick = () => {
+      const name = overlay.querySelector('#nf-name').value.trim() || '未命名文档';
+      const path = overlay.querySelector('#nf-path').value.trim();
+      if (!path.endsWith('.md')) { alert('路径必须以 .md 结尾'); return; }
+      close();
+      onCreate(name, path);
+    };
+    fname.focus();
+  },
+
+  showRenameFile(file, onSave) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <h3>✎ 重命名文件</h3>
+        <label style="display:block;font-size:12px;color:#57606a;margin-bottom:4px;">显示名</label>
+        <input id="rn-name" style="width:100%;padding:6px 10px;border:1px solid #d0d7de;border-radius:4px;font-size:13px;margin-bottom:10px;" value="${UI.escapeHtml(file.name)}" />
+        <label style="display:block;font-size:12px;color:#57606a;margin-bottom:4px;">仓库内路径 (.md)</label>
+        <input id="rn-path" style="width:100%;padding:6px 10px;border:1px solid #d0d7de;border-radius:4px;font-size:13px;margin-bottom:14px;" value="${UI.escapeHtml(file.docPath)}" />
+        <div class="modal-actions">
+          <button class="btn-secondary" id="rn-cancel">取消</button>
+          <button class="btn-primary" id="rn-save">保存</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector('#rn-cancel').onclick = close;
+    overlay.querySelector('#rn-save').onclick = () => {
+      const name = overlay.querySelector('#rn-name').value.trim();
+      const path = overlay.querySelector('#rn-path').value.trim();
+      if (!name) { alert('名称不能为空'); return; }
+      if (!path.endsWith('.md')) { alert('路径必须以 .md 结尾'); return; }
+      close();
+      onSave(name, path);
+    };
+  },
+};
+
+/* 自定义右键菜单（用于右栏卡片内的文字） */
+const CtxMenu = {
+  _hideHandler: null,
+  _active: false,
+
+  show(x, y, parentId, noteText, startOffset, endOffset) {
+    // 如果已经有菜单在显示，先 hide 掉（但这次不自动弹新的 —— 用户要重新右键）
+    // 实际上 hide() 里已经会清理 DOM，直接调用就行
+    this._active = true;
+
+    const menu = document.createElement('div');
+    menu.className = 'custom-context-menu';
+    menu.innerHTML = `<div class="menu-item">📝 添加子批注</div>`;
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+    document.body.appendChild(menu);
+
+    // 菜单项点击：stopPropagation 防止冒泡到 document 的 click hide handler
+    menu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const sourceText = noteText.substring(startOffset, endOffset);
+      this._active = false;
+      document.querySelectorAll('.custom-context-menu').forEach(m => m.remove());
+      Modal.showAddChild(parentId, startOffset, endOffset, sourceText);
+    });
+
+    // 常驻 click hide handler（只注册一次，只处理 click 事件，不含 contextmenu）
+    if (!this._hideHandler) {
+      this._hideHandler = (e) => {
+        if (!this._active) return;
+        // 点击菜单自身 → 忽略（菜单项的 click 会自己 hide）
+        if (e.target.closest('.custom-context-menu')) return;
+        // 点击模态弹窗 → 忽略（AddChild modal 打开中）
+        if (e.target.closest('.modal-overlay')) return;
+        // 其他任何地方的 click → hide
+        this._active = false;
+        document.querySelectorAll('.custom-context-menu').forEach(m => m.remove());
+      };
+      document.addEventListener('click', this._hideHandler);
+      // 注意：**不在 hide handler 里挂 contextmenu**！
+      // contextmenu 触发时我们自己的 contextmenu handler 会接管
+    }
+  },
+
+  hide() {
+    this._active = false;
+    document.querySelectorAll('.custom-context-menu').forEach(m => m.remove());
+  },
+};
+
+/* ==================== Layer 5: 右栏卡片渲染 ==================== */
+const RightPanel = {
+  render() {
+    const list = document.getElementById('annotation-list');
+    list.innerHTML = '';
+    const keyword = state.searchKeyword.trim().toLowerCase();
+
+    const walk = (anns, depth = 0) => {
+      for (const ann of anns) {
+        // 搜索过滤
+        if (keyword) {
+          const match = (ann.sourceText.toLowerCase().includes(keyword) || ann.note.toLowerCase().includes(keyword));
+          if (!match) continue;
+        }
+        const card = this.createCard(ann, depth);
+        list.appendChild(card);
+        if (ann.children && ann.children.length > 0) {
+          const childrenDiv = document.createElement('div');
+          childrenDiv.className = 'children';
+          // 递归渲染子批注
+          const savedList = ann.children;
+          ann.children.forEach((c, i) => {
+            if (keyword) {
+              // 搜索模式下只显示匹配的子批注
+              if (!c.sourceText.toLowerCase().includes(keyword) && !c.note.toLowerCase().includes(keyword)) return;
+            }
+            const subCard = this.createCard(c, depth + 1, ann);
+            childrenDiv.appendChild(subCard);
+          });
+          // 如果有子批注（搜索模式下只显示匹配的），加到 card 后面
+          if (childrenDiv.children.length > 0) {
+            const wrap = document.createElement('div');
+            wrap.className = 'children';
+            ann.children.forEach((c) => {
+              if (keyword) {
+                if (!c.sourceText.toLowerCase().includes(keyword) && !c.note.toLowerCase().includes(keyword)) return;
+              }
+              wrap.appendChild(this.createCard(c, depth + 1, ann));
+            });
+            card.appendChild(wrap);
+          }
+        }
+      }
+    };
+
+    // 非搜索模式下正确的层级嵌套
+    if (!keyword) {
+      list.innerHTML = '';
+      state.annotations.forEach(ann => {
+        list.appendChild(this._buildCardWithChildren(ann, 0));
+      });
+    } else {
+      // 搜索模式：扁平化匹配项
+      list.innerHTML = '';
+      const flat = [];
+      const collect = (anns) => {
+        for (const a of anns) {
+          flat.push({ ann: a, depth: this._getDepth(a) });
+          collect(a.children);
+        }
+      };
+      collect(state.annotations);
+      const matched = flat.filter(({ ann }) =>
+        ann.sourceText.toLowerCase().includes(keyword) || ann.note.toLowerCase().includes(keyword)
+      );
+      matched.forEach(({ ann }) => list.appendChild(this._buildCardWithChildren(ann, 0)));
+    }
+
+    // 统计
+    const stats = Annotations.getStats();
+    document.getElementById('stats').textContent =
+      `${stats.total} 条批注 · ${stats.top} 一级 · 深度 ${stats.depth}`;
+
+    if (state.annotations.length === 0) {
+      document.getElementById('stats').textContent = '暂无批注';
+    }
+  },
+
+  /* 计算某个节点的"层级深度"（用于搜索模式显示缩进） */
+  _getDepth(ann, list = state.annotations, depth = 0) {
+    for (const a of list) {
+      if (a.id === ann.id) return depth;
+      const found = this._getDepth(ann, a.children, depth + 1);
+      if (found !== -1) return found;
+    }
+    return -1;
+  },
+
+  /* 递归构建卡片 DOM（含子批注嵌套） */
+  _buildCardWithChildren(ann, depth) {
+    const card = this.createCard(ann, depth, ann.parentId ? Annotations.findById(ann.parentId) : null);
+    if (ann.children && ann.children.length > 0) {
+      const childrenWrap = document.createElement('div');
+      childrenWrap.className = 'children';
+      if (state.collapsedIds.has(ann.id)) childrenWrap.classList.add('collapsed');
+      ann.children.forEach(child => childrenWrap.appendChild(this._buildCardWithChildren(child, depth + 1)));
+      card.appendChild(childrenWrap);
+    }
+    return card;
+  },
+
+  createCard(ann, depth, parentAnn) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.id = ann.id;
+    card.dataset.depth = depth;
+
+    if (ann.status === 'orphaned') card.classList.add('orphaned');
+    if (ann.status === 'stale') card.classList.add('stale');
+
+    // 状态标签
+    if (ann.status === 'orphaned') {
+      const tag = document.createElement('div');
+      tag.className = 'orphaned-tag';
+      tag.textContent = '⚠️ 原文已删除';
+      card.appendChild(tag);
+    } else if (ann.status === 'stale') {
+      const tag = document.createElement('div');
+      tag.className = 'stale-tag';
+      tag.textContent = '⚠️ 原文已变更';
+      card.appendChild(tag);
+    }
+
+    // 操作按钮
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+    if (ann.parentId === null && ann.status !== 'orphaned') {
+      const locateBtn = document.createElement('button');
+      locateBtn.className = 'locate';
+      locateBtn.title = '定位原文';
+      locateBtn.textContent = '🔗';
+      locateBtn.onclick = () => {
+        if (ann.status !== 'orphaned') Highlight.scrollTo(ann.range);
+      };
+      actions.appendChild(locateBtn);
+    }
+    const delBtn = document.createElement('button');
+    delBtn.className = 'delete';
+    delBtn.title = '删除';
+    delBtn.textContent = '🗑️';
+    delBtn.onclick = () => {
+      Modal.confirm('确定删除此批注及其全部子批注吗？', () => {
+        Annotations.remove(ann.id);
+        Annotations.refreshTopLevelStatus();
+        Highlight.refreshAll();
+        RightPanel.render();
+        Storage.saveCurrent();
+      });
+    };
+    actions.appendChild(delBtn);
+    card.appendChild(actions);
+
+    // 如果有子批注，加折叠 toggle 按钮
+    if (ann.children && ann.children.length > 0) {
+      card.classList.add('has-children');
+      const collapsed = state.collapsedIds.has(ann.id);
+      const toggle = document.createElement('button');
+      toggle.className = 'collapse-toggle';
+      toggle.title = collapsed ? '展开子批注' : '折叠子批注';
+      toggle.textContent = collapsed ? `▸ ${ann.children.length}` : `▾ ${ann.children.length}`;
+      toggle.onclick = (e) => {
+        e.stopPropagation();
+        if (state.collapsedIds.has(ann.id)) state.collapsedIds.delete(ann.id);
+        else state.collapsedIds.add(ann.id);
+        Storage.saveCurrent();
+        RightPanel.render();
+      };
+      card.appendChild(toggle);
+    }
+
+    // 原文片段
+    const sourceEl = document.createElement('div');
+    sourceEl.className = 'source-text';
+    sourceEl.textContent = `"${ann.sourceText}"`;
+    sourceEl.title = '点击定位';
+    sourceEl.onclick = () => {
+      if (ann.parentId === null) {
+        if (ann.status !== 'orphaned') Highlight.scrollTo(ann.range);
+      } else {
+        // 子批注：定位到父卡片
+        const parent = Annotations.findById(ann.parentId);
+        if (parent && parent.status !== 'orphaned') Highlight.scrollTo(parent.range);
+      }
+      // 激活卡片
+      document.querySelectorAll('.card.active').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+    };
+    card.appendChild(sourceEl);
+
+    // 批注说明（Markdown 渲染），子批注高亮锚点在渲染后叠加
+    const noteEl = document.createElement('div');
+    noteEl.className = 'note-content';
+    const renderedHtml = simpleMarkdown(ann.note || '');
+    noteEl.innerHTML = renderedHtml;
+
+    // 叠加子批注高亮锚点 mark.sub-anchor
+    this._applySubAnnotationMarks(noteEl, ann);
+
+    // 子批注在这个容器内支持右键选中文本添加孙子批注
+    this._attachCardContextMenu(noteEl, ann);
+
+    card.appendChild(noteEl);
+
+    // stale 确认更新按钮
+    if (ann.status === 'stale' && ann.parentId === null) {
+      const fixBtn = document.createElement('div');
+      fixBtn.className = 'stale-fix';
+      fixBtn.textContent = '✓ 确认更新为当前文本';
+      fixBtn.onclick = () => {
+        Annotations.confirmUpdate(ann.id);
+        Highlight.refreshAll();
+        RightPanel.render();
+        Storage.saveCurrent();
+      };
+      card.appendChild(fixBtn);
+    }
+
+    return card;
+  },
+
+  /* 在已渲染的 note HTML 上，根据子批注的 noteOffset 叠加高亮 mark */
+  _applySubAnnotationMarks(noteEl, parentAnn) {
+    if (!parentAnn.children || parentAnn.children.length === 0) return;
+
+    // 找到所有子批注对应的 noteOffset，需要在纯文本上计算位置
+    // 但渲染后 DOM 结构变了，偏移可能对不上 —— 所以我们换一个思路：
+    // 直接在渲染好的 HTML 里找到 sourceText 出现的位置，用 mark 包裹
+    // 这个方案更简单可靠
+
+    for (const child of parentAnn.children) {
+      if (child.status === 'orphaned') continue;
+      const marks = noteEl.querySelectorAll(`mark.sub-anchor[data-child-id="${child.id}"]`);
+      if (marks.length > 0) continue; // 已存在
+
+      const source = child.sourceText;
+      if (!source) continue;
+
+      // 找可搜索的文本节点
+      const walker = document.createTreeWalker(noteEl, NodeFilter.SHOW_TEXT, null);
+      const textNodes = [];
+      let node;
+      while ((node = walker.nextNode())) textNodes.push(node);
+
+      for (const txtNode of textNodes) {
+        const text = txtNode.textContent;
+        const idx = text.indexOf(source);
+        if (idx !== -1) {
+          // 拆分并包裹
+          const parent = txtNode.parentNode; // 必须先保存，replaceChild 后 txtNode.parentNode 会变 null
+          const before = document.createTextNode(text.substring(0, idx));
+          const mark = document.createElement('mark');
+          mark.className = 'sub-anchor';
+          mark.dataset.childId = child.id;
+          mark.textContent = source;
+          const after = document.createTextNode(text.substring(idx + source.length));
+          parent.replaceChild(after, txtNode);
+          parent.insertBefore(mark, after);
+          parent.insertBefore(before, mark);
+
+          // mark 点击 → 定位子批注卡片 + 滚动
+          mark.onclick = (e) => {
+            e.stopPropagation();
+            const subCard = noteEl.closest('.card').parentElement.querySelector(`.card[data-id="${child.id}"]`);
+            if (subCard) {
+              document.querySelectorAll('.card.active').forEach(c => c.classList.remove('active'));
+              subCard.classList.add('active');
+              subCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          };
+          break;
+        }
+      }
+    }
+  },
+
+  /* 给卡片内容区绑定右键 → 选中文本添加子批注 */
+  _attachCardContextMenu(noteEl, ann) {
+    // 给整个右栏一个统一的 contextmenu 监听，在这里判断是否在卡片内选中了文字
+  },
+};
+
+/* 右栏统一右键监听 —— 选中文本 → 弹出自定义菜单添加子批注 */
+document.addEventListener('contextmenu', (e) => {
+  const sel = window.getSelection();
+  const text = sel.toString().trim();
+
+  // 1. 如果右键目标在自定义菜单自身上 → 隐藏菜单（让浏览器默认右键处理），然后 return
+  if (e.target.closest('.custom-context-menu')) {
+    CtxMenu.hide();
+    return;
+  }
+
+  // 2. 先清掉可能残留的旧菜单 DOM（保险起见）
+  document.querySelectorAll('.custom-context-menu').forEach(m => m.remove());
+  CtxMenu._active = false;
+
+  // 3. 没选中文字 → 不处理，让浏览器默认右键菜单弹出来
+  if (!text) return;
+
+  // 4. 判断选中是否在右栏卡片内（不是的话让默认菜单弹出）
+  const cardEl = e.target.closest('.card .note-content, .card .source-text');
+  if (!cardEl) return;
+
+  // 5. 找到所属批注 id
+  const card = e.target.closest('.card');
+  const annId = card?.dataset?.id;
+  if (!annId) return;
+
+  const ann = Annotations.findById(annId);
+  if (!ann) return;
+
+  // 6. 在父级 note 纯文本中查找选中文本的位置（模糊匹配带 Markdown 包裹的情况）
+  let offsetStart = -1, offsetEnd = -1;
+
+  // 直接匹配
+  offsetStart = ann.note.indexOf(text);
+
+  // 没匹配到 → 尝试去掉 Markdown 标记后的模糊匹配
+  if (offsetStart < 0) {
+    const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const patterns = [
+      new RegExp(`\\*\\*${escaped}\\*\\*`),       // **包裹
+      new RegExp(`\\*${escaped}\\*`),             // *包裹
+      new RegExp(`\\\`${escaped}\\\``),           // `包裹
+      new RegExp(escaped),                        // 直接
+    ];
+    for (const pat of patterns) {
+      const m = pat.exec(ann.note);
+      if (m) {
+        offsetStart = m.index;
+        offsetEnd = m.index + text.length;
+        break;
+      }
+    }
+  }
+
+  if (offsetStart < 0) return;
+  if (offsetEnd < 0) offsetEnd = offsetStart + text.length;
+
+  // 7. 阻止浏览器默认菜单 + 显示自定义菜单
+  e.preventDefault();
+  CtxMenu.show(e.clientX, e.clientY, annId, ann.note, offsetStart, offsetEnd);
+});
+
+/* ==================== Files: 多文件管理模块 ==================== */
+const Files = {
+  /* 刷新下拉框 */
+  updateSwitcher() {
+    const sel = document.getElementById('file-select');
+    if (!sel) return;
+    sel.innerHTML = '';
+    for (const f of state.files) {
+      const opt = document.createElement('option');
+      opt.value = f.id;
+      opt.textContent = f.name;
+      opt.title = f.docPath;
+      if (f.id === state.currentFileId) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    // 同时刷新目录树侧边栏（如有）
+    if (typeof DirectoryTree !== 'undefined') DirectoryTree.render();
+  },
+
+  /* 切换（下拉 change） */
+  onSelectChange(e) {
+    const id = e.target.value;
+    if (id && id !== state.currentFileId) Storage.switchToFile(id);
+  },
+
+  /* 新建 */
+  newFile() {
+    Modal.showNewFile((name, docPath) => {
+      const file = Storage.createFile(name, docPath);
+      Files.updateSwitcher();
+      Storage.switchToFile(file.id);
+    });
+  },
+
+  /* 重命名 */
+  renameCurrent() {
+    const cur = state.files.find(f => f.id === state.currentFileId);
+    if (!cur) return;
+    Modal.showRenameFile(cur, (name, docPath) => {
+      Storage.renameFile(cur.id, name, docPath);
+      Files.updateSwitcher();
+      UI.setSaveStatus('已重命名');
+    });
+  },
+
+  /* 删除 */
+  deleteCurrent() {
+    if (state.files.length <= 1) {
+      alert('至少保留一个文件。');
+      return;
+    }
+    const cur = state.files.find(f => f.id === state.currentFileId);
+    if (!cur) return;
+    Modal.confirm(`确定删除文件「${cur.name}」及其全部批注吗？此操作不可撤销。`, () => {
+      Storage.deleteFile(cur.id);
+      const nextId = state.files[0].id;
+      Files.updateSwitcher();
+      Storage.switchToFile(nextId);
+    });
+  },
+};
+
+/* ==================== Layer 6: UI 工具 + 工具栏 ==================== */
+const UI = {
+  escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  },
+
+  setSaveStatus(text) {
+    document.getElementById('save-status').textContent = text;
+  },
+
+  toggleReadOnly() {
+    if (!state.monaco) return; // Monaco 还没初始化
+    state.readOnly = !state.readOnly;
+    state.monaco.updateOptions({ readOnly: state.readOnly });
+    const btn = document.getElementById('btn-readonly');
+    btn.textContent = state.readOnly ? '🔒 只读模式' : '✏️ 编辑模式';
+    btn.classList.toggle('active', state.readOnly);
+    Storage.saveCurrent();
+  },
+
+  toggleHighlight() {
+    state.showHighlight = !state.showHighlight;
+    const btn = document.getElementById('btn-toggle-highlight');
+    btn.textContent = state.showHighlight ? '👁️ 高亮' : '👁️‍🗨️ 隐藏高亮';
+    btn.classList.toggle('active', !state.showHighlight);
+    Highlight.refreshAll();
+  },
+
+  exportJson() {
+    const curFile = state.files.find(f => f.id === state.currentFileId);
+    const data = {
+      version: DATA_VERSION,
+      exportedAt: new Date().toISOString(),
+      fileId: state.currentFileId,
+      fileName: curFile?.name || '未命名',
+      docPath: curFile?.docPath || '',
+      docContent: state.monaco.getValue(),
+      annotations: state.annotations,
+      collapsedIds: Array.from(state.collapsedIds),
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const safeName = (curFile?.name || 'annotations').replace(/[\\/:*?"<>|]/g, '_');
+    a.download = `${safeName}.annotations.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  triggerImport() {
+    document.getElementById('file-input').click();
+  },
+};
+
+/* 工具栏事件绑定 */
+document.getElementById('file-select').onchange = (e) => Files.onSelectChange(e);
+document.getElementById('btn-new-file').onclick = () => Files.newFile();
+document.getElementById('btn-rename-file').onclick = () => Files.renameCurrent();
+document.getElementById('btn-delete-file').onclick = () => Files.deleteCurrent();
+
+document.getElementById('btn-readonly').onclick = () => UI.toggleReadOnly();
+document.getElementById('btn-toggle-highlight').onclick = () => UI.toggleHighlight();
+document.getElementById('btn-export').onclick = () => UI.exportJson();
+document.getElementById('btn-import').onclick = () => UI.triggerImport();
+document.getElementById('file-input').onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (data.docContent) {
+        // 先恢复文档内容
+        state.monaco.setValue(data.docContent);
+      }
+      const imported = data.annotations || [];
+      Modal.showImportChoices(
+        () => {
+          // 合并：保留现有批注 + 导入的批注
+          state.annotations = [...state.annotations, ...imported];
+          // 给导入的生成全新的 UUID（避免冲突）
+          const remap = {};
+          const walkReId = (list) => list.map(a => {
+            const oldId = a.id;
+            remap[oldId] = Annotations.newId();
+            a.id = remap[oldId];
+            if (a.parentId !== null) a.parentId = remap[a.parentId] || a.parentId;
+            a.children = walkReId(a.children);
+            return a;
+          });
+          walkReId(state.annotations);
+          AfterImport();
+        },
+        () => {
+          // 覆盖
+          state.annotations = imported;
+          AfterImport();
+        }
+      );
+      function AfterImport() {
+        Annotations.refreshTopLevelStatus();
+        Highlight.refreshAll();
+        RightPanel.render();
+        Storage.saveCurrent();
+      }
+    } catch (err) {
+      alert('导入失败：JSON 格式错误 —— ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = ''; // 允许再次选同一个文件
+};
+
+document.getElementById('btn-clear').onclick = () => {
+  Modal.confirm('确定清空全部批注吗？此操作不可撤销。', () => {
+    state.annotations = [];
+    Highlight.refreshAll();
+    RightPanel.render();
+    Storage.saveCurrent();
+  });
+};
+
+/* 搜索框 */
+document.getElementById('search-input').oninput = (e) => {
+  state.searchKeyword = e.target.value;
+  RightPanel.render();
+};
+
+/* ==================== Layer 6.2: 快捷键 ==================== */
+document.addEventListener('keydown', (e) => {
+  // Ctrl/⌘ + S
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault();
+    Storage.saveCurrent();
+  }
+  // Ctrl/⌘ + Shift + E
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'e') {
+    e.preventDefault();
+    UI.exportJson();
+  }
+  // Ctrl/⌘ + Shift + I
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'i') {
+    e.preventDefault();
+    UI.triggerImport();
+  }
+  // Esc
+  if (e.key === 'Escape') {
+    CtxMenu.hide();
+    // 关闭模态
+    const overlay = document.querySelector('.modal-overlay');
+    if (overlay) overlay.remove();
+    // 清空搜索
+    if (state.searchKeyword) {
+      state.searchKeyword = '';
+      document.getElementById('search-input').value = '';
+      RightPanel.render();
+    }
+  }
+});
+
+/* ==================== Layer 6.3: GitHub Sync 模块 ==================== */
+const GH_CONFIG_KEY = 'doc-branch-github-config';
+const GH_API_BASE = 'https://api.github.com';
+
+/* ======== base64 编码（兼容 UTF-8） ======== */
+function toBase64(str) {
+  return btoa(unescape(encodeURIComponent(str)));
+}
+function fromBase64(b64) {
+  return decodeURIComponent(escape(atob(b64)));
+}
+
+/* ======== 配置管理 ======== */
+const GHConfig = {
+  get() {
+    try {
+      const raw = localStorage.getItem(GH_CONFIG_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (e) { return null; }
+  },
+  save(cfg) {
+    localStorage.setItem(GH_CONFIG_KEY, JSON.stringify(cfg));
+  },
+  clear() {
+    localStorage.removeItem(GH_CONFIG_KEY);
+  },
+};
+
+/* ======== GitHub API 调用层 ======== */
+const GitHubAPI = {
+  /* 通用 fetch（带认证头） */
+  async _fetch(path, opts = {}, token) {
+    const t = token || GHConfig.get()?.token;
+    const headers = {
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+    };
+    if (t) headers['Authorization'] = `Bearer ${t}`;
+    if (opts.body) headers['Content-Type'] = 'application/json';
+
+    const res = await fetch(GH_API_BASE + path, {
+      ...opts,
+      headers: { ...headers, ...opts.headers },
+    });
+
+    // 解析响应
+    let body = null;
+    try { body = await res.json(); } catch {}
+
+    if (!res.ok) {
+      const err = new Error(body?.message || `HTTP ${res.status}`);
+      err.status = res.status;
+      err.body = body;
+      throw err;
+    }
+    return body;
+  },
+
+  /* R1: 测试连接 —— GET /repos/{owner}/{repo} */
+  async testConnection(owner, repo, token) {
+    return this._fetch(`/repos/${owner}/${repo}`, { method: 'GET' }, token);
+  },
+
+  /* 获取文件内容 + SHA —— GET /repos/{owner}/{repo}/contents/{path}?ref=branch
+     注意：Contents API 路径里的 / 不需要编码，直接拼接 */
+  async getContents(owner, repo, path, branch, token) {
+    try {
+      const body = await this._fetch(
+        `/repos/${owner}/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`,
+        { method: 'GET' },
+        token
+      );
+      if (body && body.content && body.encoding === 'base64') {
+        body._decoded = fromBase64(body.content);
+      }
+      return body;
+    } catch (err) {
+      if (err.status === 404) return null; // 文件不存在
+      throw err;
+    }
+  },
+
+  /* PUT 文件内容 —— PUT /repos/{owner}/{repo}/contents/{path}
+     注意：Contents API 路径里的 / 不需要编码 */
+  async putContents(owner, repo, path, content, message, branch, sha, token) {
+    const body = {
+      message,
+      content: toBase64(content),
+      branch,
+    };
+    if (sha) body.sha = sha;
+    return this._fetch(
+      `/repos/${owner}/${repo}/contents/${path}`,
+      { method: 'PUT', body: JSON.stringify(body) },
+      token
+    );
+  },
+};
+
+/* ======== GitHub Sync 主模块 ======== */
+const GitHubSync = {
+  /* 从文件 docPath 推导出 annotations 路径：
+     docs/rules.md → annotations/rules.md.annotations.json
+     未命名.md → annotations/未命名.md.annotations.json
+  */
+  _annotationPath(docPath) {
+    const name = docPath.split('/').pop(); // 取文件名部分
+    return `annotations/${name}.annotations.json`;
+  },
+
+  /* 构造 commit message */
+  _buildCommitMsg(n) {
+    const now = new Date();
+    const pad = (v) => String(v).padStart(2, '0');
+    const ts = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    return `docbranch: 同步 ${n} 个文件批注 ${ts}`;
+  },
+
+  /* ====== 设置弹窗 ====== */
+  openSettings() {
+    const cfg = GHConfig.get() || {};
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal modal-lg">
+        <h3>⚙️ GitHub 同步设置</h3>
+        <div class="gh-config-form">
+          <label>GitHub Personal Access Token</label>
+          <input type="password" id="gh-token" placeholder="ghp_..." value="${cfg.token || ''}" autocomplete="off" />
+          <div class="field-hint">只需 <code>repo</code> scope。<a href="https://github.com/settings/tokens" target="_blank" style="color:#0969da">生成新 Token →</a>（⚠️ 不要在公共电脑保存）</div>
+
+          <label>仓库全名（owner/repo）</label>
+          <input type="text" id="gh-repo" placeholder="octocat/Hello-World" value="${cfg.repo || ''}" />
+
+          <label>分支名</label>
+          <input type="text" id="gh-branch" placeholder="main" value="${cfg.branch || 'main'}" />
+
+          <div class="test-row">
+            <button class="btn-secondary" id="gh-test-connection">🔌 测试连接</button>
+            <span class="test-result" id="gh-test-result"></span>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="gh-clear-cfg">清除配置</button>
+          <button class="btn-secondary" id="gh-cancel">取消</button>
+          <button class="btn-primary" id="gh-save-cfg">保存</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+
+    // 测试连接
+    overlay.querySelector('#gh-test-connection').onclick = async () => {
+      const token = overlay.querySelector('#gh-token').value.trim();
+      const repo = overlay.querySelector('#gh-repo').value.trim();
+      const branch = overlay.querySelector('#gh-branch').value.trim() || 'main';
+      const result = overlay.querySelector('#gh-test-result');
+      if (!token || !repo) {
+        result.className = 'test-result error';
+        result.textContent = '请填写 Token 和仓库';
+        return;
+      }
+      result.className = 'test-result';
+      result.textContent = '连接中...';
+      try {
+        const repoInfo = await GitHubAPI.testConnection(repo.split('/')[0], repo.split('/')[1], token);
+        result.className = 'test-result success';
+        result.textContent = `✅ 已连接：${repoInfo.full_name}`;
+      } catch (err) {
+        result.className = 'test-result error';
+        result.textContent = `❌ ${err.message}`;
+      }
+    };
+
+    overlay.querySelector('#gh-save-cfg').onclick = () => {
+      const token = overlay.querySelector('#gh-token').value.trim();
+      const repo = overlay.querySelector('#gh-repo').value.trim();
+      const branch = overlay.querySelector('#gh-branch').value.trim() || 'main';
+      if (!token || !repo) {
+        alert('请填写完整配置');
+        return;
+      }
+      if (!repo.includes('/')) {
+        alert('仓库格式应为 owner/repo');
+        return;
+      }
+      GHConfig.save({ token, repo, branch });
+      close();
+      UI.setSaveStatus('✅ GitHub 配置已保存');
+    };
+
+    overlay.querySelector('#gh-clear-cfg').onclick = () => {
+      if (confirm('确定清除 GitHub 配置吗？')) {
+        GHConfig.clear();
+        close();
+        UI.setSaveStatus('已清除 GitHub 配置');
+      }
+    };
+
+    overlay.querySelector('#gh-cancel').onclick = close;
+  },
+
+  /* ====== 一键提交入口 ====== */
+  async pushAll() {
+    // 1. 检查配置
+    const cfg = GHConfig.get();
+    if (!cfg || !cfg.token || !cfg.repo) {
+      // R1: 首次使用 → 弹设置窗，关闭后不继续
+      this.openSettings();
+      return;
+    }
+
+    // 2. 先保存当前文件，确保数据最新
+    Storage.saveCurrent();
+
+    // 3. 构造 commit message 弹窗（可编辑）
+    const numFiles = state.files.length;
+    const defaultMsg = this._buildCommitMsg(numFiles);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal modal-lg">
+        <h3>☁️ 一键提交到 GitHub</h3>
+        <p style="font-size:13px;color:#57606a;margin-bottom:10px;">
+          仓库: <strong>${cfg.repo}</strong> · 分支: <strong>${cfg.branch}</strong> ·
+          共 <strong>${numFiles}</strong> 个文件
+        </p>
+        <label style="display:block;font-size:12px;color:#57606a;margin-bottom:4px;">Commit Message</label>
+        <input type="text" id="gh-commit-msg" style="width:100%;padding:7px 10px;border:1px solid #d0d7de;border-radius:5px;font-size:13px;margin-bottom:14px;" value="${defaultMsg}" />
+        <div id="gh-progress-area" class="gh-progress" style="display:none;"></div>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="gh-push-cancel">取消</button>
+          <button class="btn-primary" id="gh-push-do">🚀 开始提交</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+
+    overlay.querySelector('#gh-push-cancel').onclick = close;
+
+    overlay.querySelector('#gh-push-do').onclick = async () => {
+      const msg = overlay.querySelector('#gh-commit-msg').value.trim() || defaultMsg;
+      overlay.querySelector('#gh-push-do').disabled = true;
+      overlay.querySelector('#gh-push-cancel').disabled = true;
+      const progressArea = overlay.querySelector('#gh-progress-area');
+      progressArea.style.display = 'block';
+
+      const { owner, repo, branch, token } = this._parseCfg(cfg);
+
+      // 每个文件对应两个 PUT（docPath + annotations），共 N*2 + 1 (index) 次
+      const plan = this._buildPushPlan();
+      const results = []; // { target, ok, sha, error }
+      const conflicts = []; // 409 冲突的文件
+
+      // 渲染初始进度
+      progressArea.innerHTML = plan.map(p =>
+        `<div class="file-line status-wait" data-target="${p.target}">
+          <span class="status-icon">⏳</span>
+          <span>${p.target}</span>
+        </div>`
+      ).join('');
+
+      const updateLine = (target, status, icon, extra = '') => {
+        const line = progressArea.querySelector(`[data-target="${target}"]`);
+        if (!line) return;
+        line.className = `file-line ${status}`;
+        line.querySelector('.status-icon').textContent = icon;
+        if (extra) line.innerHTML += `<span style="margin-left:auto;font-size:11px;">${extra}</span>`;
+      };
+
+      // 逐个文件提交
+      for (const item of plan) {
+        try {
+          updateLine(item.target, 'status-wait', '⏳');
+          // GET 远端 SHA（用于 PUT），404 表示新文件不需要 sha
+          let sha = null;
+          try {
+            const remote = await GitHubAPI.getContents(owner, repo, item.target, branch, token);
+            if (remote && remote.sha) sha = remote.sha;
+          } catch {}
+
+          try {
+            const res = await GitHubAPI.putContents(owner, repo, item.target, item.content, msg, branch, sha, token);
+            updateLine(item.target, 'status-ok', '✅', `→ ${res.commit?.sha?.substring(0,7) || ''}`);
+            results.push({ target: item.target, ok: true, sha: res.commit?.sha });
+          } catch (err) {
+            if (err.status === 409) {
+              updateLine(item.target, 'status-fail', '⚠️', 'SHA 冲突');
+              conflicts.push(item);
+              results.push({ target: item.target, ok: false, error: 'conflict', item });
+            } else {
+              updateLine(item.target, 'status-fail', '❌', err.message);
+              results.push({ target: item.target, ok: false, error: err.message });
+            }
+          }
+        } catch (err) {
+          updateLine(item.target, 'status-fail', '❌', err.message);
+          results.push({ target: item.target, ok: false, error: err.message });
+        }
+      }
+
+      // 处理冲突
+      if (conflicts.length > 0) {
+        await this._handleConflicts(conflicts, cfg, msg, progressArea, updateLine, results);
+      }
+
+      // 汇总
+      const successCount = results.filter(r => r.ok).length;
+      const failCount = results.filter(r => !r.ok).length;
+      const finalMsg = document.createElement('div');
+      finalMsg.className = 'commit-link';
+
+      // 找到最后一个成功的 commit SHA
+      const lastSha = results.filter(r => r.sha).pop()?.sha;
+      if (lastSha) {
+        finalMsg.innerHTML = `<strong>✅ 提交完成：</strong> ${successCount}/${results.length} 个文件成功 · 
+          <a href="https://github.com/${cfg.repo}/commit/${lastSha}" target="_blank">查看 commit →</a>`;
+      } else if (failCount > 0) {
+        finalMsg.innerHTML = `<strong>❌ 提交失败：</strong> ${failCount} 个文件未成功。请检查错误后重试。`;
+      }
+      progressArea.appendChild(finalMsg);
+
+      overlay.querySelector('#gh-push-do').textContent = '已完成';
+      overlay.querySelector('#gh-push-do').disabled = true;
+      overlay.querySelector('#gh-push-cancel').disabled = false;
+      overlay.querySelector('#gh-push-cancel').textContent = '关闭';
+
+      UI.setSaveStatus(`GitHub Sync: ${successCount}/${results.length}`);
+    };
+  },
+
+  /* 解析配置为 owner/repo */
+  _parseCfg(cfg) {
+    const [owner, repo] = cfg.repo.split('/');
+    return { owner, repo, branch: cfg.branch || 'main', token: cfg.token };
+  },
+
+  /* 构建提交计划 —— 所有文件的 doc + annotations + index */
+  _buildPushPlan() {
+    const plan = [];
+
+    // 先保存当前文件一次，保证 localStorage 最新
+    Storage.saveCurrent();
+
+    for (const f of state.files) {
+      const data = Storage.loadFile(f.id);
+      if (!data) continue;
+
+      // 1. docPath → Monaco 内容
+      const docContent = (f.id === state.currentFileId && state.monaco)
+        ? state.monaco.getValue()
+        : data.docContent || '';
+      plan.push({ target: f.docPath, content: docContent });
+
+      // 2. annotations/{name}.annotations.json → 批注 JSON
+      const annFile = {
+        version: DATA_VERSION,
+        fileId: f.id,
+        fileName: f.name,
+        docPath: f.docPath,
+        annotations: data.annotations || [],
+        collapsedIds: data.collapsedIds || [],
+      };
+      plan.push({ target: this._annotationPath(f.docPath), content: JSON.stringify(annFile, null, 2) });
+    }
+
+    // 3. docbranch-index.json —— 索引文件
+    const indexFile = {
+      version: DATA_VERSION,
+      files: state.files.map(f => ({ id: f.id, name: f.name, docPath: f.docPath })),
+      updatedAt: new Date().toISOString(),
+    };
+    plan.push({ target: 'docbranch-index.json', content: JSON.stringify(indexFile, null, 2) });
+
+    return plan;
+  },
+
+  /* ====== 冲突处理弹窗（R7） ======
+     注意：GitHub Contents API 不允许不带 SHA 覆盖已有文件，
+     所以 force 和 pull_first 在技术上都需要先 GET 最新 SHA 再 PUT。
+     两者区别仅在 UI 提示的语义上。
+  */
+  async _handleConflicts(conflicts, cfg, msg, progressArea, updateLine, results) {
+    return new Promise((resolve) => {
+      const { owner, repo, branch, token } = this._parseCfg(cfg);
+
+      const subOverlay = document.createElement('div');
+      subOverlay.className = 'modal-overlay';
+      subOverlay.innerHTML = `
+        <div class="modal modal-lg gh-conflict">
+          <h3>⚠️ 远端有更新 —— SHA 冲突</h3>
+          <p style="color:#57606a;">以下文件在远端已被他人修改，如何处理？</p>
+          <div class="conflict-file-list">
+            ${conflicts.map(c => c.target).join('<br>')}
+          </div>
+          <div class="radio-group">
+            <label><input type="radio" name="gh-conflict-mode" value="force" checked> <strong>强制覆盖</strong>：用本地版本覆盖远端，丢弃他人改动</label>
+            <label><input type="radio" name="gh-conflict-mode" value="pull_first"> <strong>先取最新 SHA 再覆盖</strong>：先 GET 远端最新提交确认状态，再 PUT 本地版本</label>
+            <label><input type="radio" name="gh-conflict-mode" value="cancel"> 取消本次提交</label>
+          </div>
+          <p style="font-size:11px;color:#bf8700;margin-top:8px;">
+            💡 注：GitHub API 要求覆盖已有文件必须传最新 SHA，以上两种方式实现相同，仅语义不同。
+          </p>
+          <div class="modal-actions">
+            <button class="btn-secondary" id="gh-conf-close">取消</button>
+            <button class="btn-primary" id="gh-conf-do">继续</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(subOverlay);
+
+      const close = () => subOverlay.remove();
+      subOverlay.querySelector('#gh-conf-close').onclick = () => { close(); resolve(); };
+
+      subOverlay.querySelector('#gh-conf-do').onclick = async () => {
+        const mode = subOverlay.querySelector('input[name="gh-conflict-mode"]:checked').value;
+        close();
+
+        if (mode === 'cancel') { resolve(); return; }
+
+        // force / pull_first 在技术上相同：都必须先 GET SHA 再 PUT
+        for (const item of conflicts) {
+          try {
+            updateLine(item.target, 'status-wait', '⏳ (重试)');
+            let sha = null;
+            try {
+              const remote = await GitHubAPI.getContents(owner, repo, item.target, branch, token);
+              if (remote && remote.sha) sha = remote.sha;
+            } catch {}
+
+            const res = await GitHubAPI.putContents(owner, repo, item.target, item.content, msg, branch, sha, token);
+            updateLine(item.target, 'status-ok', '✅', `→ ${res.commit?.sha?.substring(0,7) || ''}`);
+            const r = results.find(r => r.target === item.target);
+            if (r) { r.ok = true; r.sha = res.commit?.sha; r.error = null; }
+          } catch (err) {
+            updateLine(item.target, 'status-fail', '❌', err.message);
+            const r = results.find(r => r.target === item.target);
+            if (r) { r.ok = false; r.error = err.message; }
+          }
+        }
+        resolve();
+      };
+    });
+  },
+
+  /* ====== 从远端拉取（R9） ====== */
+  async pullFromRemote() {
+    const cfg = GHConfig.get();
+    if (!cfg || !cfg.token || !cfg.repo) {
+      this.openSettings();
+      return;
+    }
+
+    const { owner, repo, branch, token } = this._parseCfg(cfg);
+
+    // R9: 弹窗选择合并策略
+    const askMode = () => new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal modal-lg">
+          <h3>📥 从 GitHub 拉取</h3>
+          <p style="font-size:13px;color:#57606a;margin-bottom:14px;">
+            仓库: <strong>${cfg.repo}</strong> · 分支: <strong>${cfg.branch}</strong>
+          </p>
+          <div class="radio-group">
+            <label><input type="radio" name="gh-pull-mode" value="merge" checked> <strong>合并模式</strong>：本地已有文件保留，远端新文件新增（推荐）</label>
+            <label><input type="radio" name="gh-pull-mode" value="replace"> <strong>完全覆盖</strong>：用远端内容替换本地全部文件和批注（本地未提交的改动会丢失）</label>
+          </div>
+          <div class="modal-actions">
+            <button class="btn-secondary" id="gh-pull-cancel">取消</button>
+            <button class="btn-primary" id="gh-pull-do">🚀 开始拉取</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.querySelector('#gh-pull-cancel').onclick = () => { close(); resolve(null); };
+      overlay.querySelector('#gh-pull-do').onclick = () => {
+        const mode = overlay.querySelector('input[name="gh-pull-mode"]:checked').value;
+        close(); resolve(mode);
+      };
+    });
+
+    const mode = await askMode();
+    if (!mode) return; // 用户取消
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal modal-lg">
+        <h3>📥 从 GitHub 拉取 —— 进行中</h3>
+        <div id="gh-pull-progress" class="gh-progress"></div>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="gh-pull-close" disabled>关闭</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const prog = overlay.querySelector('#gh-pull-progress');
+    prog.innerHTML = `<div class="file-line status-wait"><span class="status-icon">⏳</span><span>获取文件索引 docbranch-index.json</span></div>`;
+
+    // 1. GET docbranch-index.json
+    let indexData;
+    try {
+      const idx = await GitHubAPI.getContents(owner, repo, 'docbranch-index.json', branch, token);
+      if (!idx) {
+        prog.innerHTML = `<div class="file-line status-fail"><span class="status-icon">❌</span><span>仓库根目录无 docbranch-index.json，无法识别文件列表</span></div>`;
+        overlay.querySelector('#gh-pull-close').disabled = false;
+        return;
+      }
+      indexData = JSON.parse(idx._decoded);
+      prog.innerHTML = `<div class="file-line status-ok"><span class="status-icon">✅</span><span>获取索引成功（${indexData.files?.length || 0} 个文件）</span></div>`;
+    } catch (err) {
+      prog.innerHTML += `<div class="file-line status-fail"><span class="status-icon">❌</span><span>拉取索引失败: ${err.message}</span></div>`;
+      overlay.querySelector('#gh-pull-close').disabled = false;
+      return;
+    }
+
+    // 2. 逐个拉取文件
+    const remoteFiles = indexData.files || [];
+    const mergePlans = [];
+
+    for (const f of remoteFiles) {
+      prog.innerHTML += `<div class="file-line status-wait"><span class="status-icon">⏳</span><span>${f.docPath} + annotations</span></div>`;
+      try {
+        const [docRes, annRes] = await Promise.all([
+          GitHubAPI.getContents(owner, repo, f.docPath, branch, token),
+          GitHubAPI.getContents(owner, repo, `annotations/${f.docPath.split('/').pop()}.annotations.json`, branch, token),
+        ]);
+        // 清掉这个 wait 行
+        const waits = prog.querySelectorAll('.file-line.status-wait');
+        waits.forEach(el => el.remove());
+
+        const docContent = docRes?._decoded || '';
+        let annotationsData = { annotations: [], collapsedIds: [] };
+        if (annRes?._decoded) {
+          try { annotationsData = JSON.parse(annRes._decoded); } catch {}
+        }
+
+        // 查找本地是否已有此文件（按 id 或 docPath 匹配）
+        const localFile = state.files.find(lf =>
+          (f.id && lf.id === f.id) || lf.docPath === f.docPath
+        );
+
+        mergePlans.push({ file: f, docContent, annotationsData, localFile });
+        prog.innerHTML += `<div class="file-line status-ok"><span class="status-icon">✅</span><span>${f.docPath}</span></div>`;
+      } catch (err) {
+        prog.innerHTML += `<div class="file-line status-fail"><span class="status-icon">❌</span><span>${f.docPath}: ${err.message}</span></div>`;
+      }
+    }
+
+    // 3. 应用合并/覆盖 —— 先在内存中构建新状态，成功后再一次性写入 localStorage
+    //    避免中途失败导致数据丢失
+    const newLocalFiles = []; // replace 模式下全新的文件列表
+
+    for (const plan of mergePlans) {
+      if (plan.localFile && mode === 'merge') {
+        // 合并模式：只覆盖已有文件的内容
+        const fileKey = Storage._fileKey(plan.localFile.id);
+        localStorage.setItem(fileKey, JSON.stringify({
+          version: DATA_VERSION,
+          docContent: plan.docContent,
+          annotations: plan.annotationsData.annotations || [],
+          collapsedIds: plan.annotationsData.collapsedIds || [],
+        }));
+        if (plan.localFile.id === state.currentFileId) {
+          Storage.switchToFile(plan.localFile.id);
+        }
+      } else {
+        // 新建文件（来自远端，或 replace 模式全部重建）
+        const id = plan.file.id || uuidv4();
+        const newFile = {
+          id,
+          name: plan.file.name || plan.docPath.split('/').pop() || '远端文件',
+          docPath: plan.file.docPath,
+        };
+        // replace 模式下先收集到 newLocalFiles，稍后统一写入
+        // merge 模式下直接追加到 state.files
+        if (mode === 'merge') {
+          state.files.push(newFile);
+          localStorage.setItem(Storage._fileKey(id), JSON.stringify({
+            version: DATA_VERSION,
+            docContent: plan.docContent,
+            annotations: plan.annotationsData.annotations || [],
+            collapsedIds: plan.annotationsData.collapsedIds || [],
+          }));
+        } else {
+          newLocalFiles.push({
+            file: newFile,
+            data: JSON.stringify({
+              version: DATA_VERSION,
+              docContent: plan.docContent,
+              annotations: plan.annotationsData.annotations || [],
+              collapsedIds: plan.annotationsData.collapsedIds || [],
+            }),
+          });
+        }
+      }
+    }
+
+    // replace 模式：先备份、再写入新数据、最后删除旧数据
+    if (mode === 'replace') {
+      // 1) 备份所有旧文件 key（方便出问题时恢复）
+      const backup = [];
+      for (const oldF of state.files) {
+        const k = Storage._fileKey(oldF.id);
+        const v = localStorage.getItem(k);
+        if (v) backup.push({ key: k, value: v });
+      }
+      localStorage.setItem('doc-branch-backup-v1', JSON.stringify(backup));
+
+      try {
+        // 2) 先把新文件数据全部写入 localStorage
+        for (const nf of newLocalFiles) {
+          localStorage.setItem(Storage._fileKey(nf.file.id), nf.data);
+        }
+        // 3) 再删除旧文件数据
+        for (const oldF of state.files) {
+          localStorage.removeItem(Storage._fileKey(oldF.id));
+        }
+        // 4) 更新内存状态
+        state.files = newLocalFiles.map(nf => nf.file);
+        if (state.files.length > 0) {
+          state.currentFileId = state.files[0].id;
+          // 加载第一个文件到 Monaco
+          const firstData = Storage.loadFile(state.currentFileId);
+          state.monaco.setValue(firstData?.docContent || '');
+          state.annotations = firstData?.annotations || [];
+          state.collapsedIds = new Set(firstData?.collapsedIds || []);
+          Annotations.refreshTopLevelStatus();
+          Highlight.refreshAll();
+          RightPanel.render();
+        } else {
+          state.currentFileId = null;
+        }
+        // 5) 成功后清除备份
+        localStorage.removeItem('doc-branch-backup-v1');
+      } catch (err) {
+        // 6) 失败：恢复备份
+        for (const item of backup) {
+          localStorage.setItem(item.key, item.value);
+        }
+        state.files.forEach(oldF => {
+          // 重新加载 state.files 不变
+        });
+        prog.innerHTML += `<div class="file-line status-fail" style="margin-top:10px;"><span class="status-icon">❌</span><span>写入失败，已恢复备份：${err.message}</span></div>`;
+        overlay.querySelector('#gh-pull-close').disabled = false;
+        return;
+      }
+    }
+
+    Storage.saveIndex();
+    Files.updateSwitcher();
+
+    prog.innerHTML += `<div class="file-line status-ok" style="margin-top:10px;"><span class="status-icon">🎉</span><span>拉取完成！（${mode === 'merge' ? '合并' : '覆盖'}模式）</span></div>`;
+    overlay.querySelector('#gh-pull-close').disabled = false;
+    overlay.querySelector('#gh-pull-close').onclick = () => overlay.remove();
+
+    UI.setSaveStatus(`GitHub Pull 完成 · ${state.files.length} 个文件`);
+  },
+};
+
+/* GitHub 按钮事件绑定 */
+document.getElementById('btn-gh-settings').onclick = () => GitHubSync.openSettings();
+document.getElementById('btn-gh-push').onclick = () => GitHubSync.pushAll();
+document.getElementById('btn-gh-pull').onclick = () => GitHubSync.pullFromRemote();
+
+/* ==================== Layer 6.4: 目录树侧边栏 ==================== */
+const DT_KEY_COLLAPSED = 'doc-branch-folder-collapsed-v1';
+const DT_KEY_SIDEBAR = 'doc-branch-sidebar-open-v1';
+
+const DirectoryTree = {
+  /* 从 localStorage 读折叠目录前缀数组 */
+  _getCollapsed() {
+    try {
+      const raw = localStorage.getItem(DT_KEY_COLLAPSED);
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  },
+  _saveCollapsed(arr) { localStorage.setItem(DT_KEY_COLLAPSED, JSON.stringify(arr)); },
+
+  /* 从 docPath 推导目录树 Map
+     输入：[{id, name, docPath}, ...]
+     输出：{
+       folders: { 'docs/': { files:[{file}], folders:{ 'docs/archive/': {...} } },
+       files: [{file}]  // 根目录文件
+     }
+     其中每个 node 结构：{ files:[], sub:{ 子前缀: node } }
+     注意：前缀约定 'docs/' 含尾部斜杠，根目录用 '' 空字符串作前缀
+  */
+  _buildTree(files) {
+    const root = { files: [], sub: {} };
+    for (const f of files) {
+      // 按 / 分割，取目录部分 + 文件名
+      const parts = f.docPath.split('/');
+      const fileName = parts.pop(); // 最后一段
+      let cur = root;
+      let prefix = '';
+      for (const p of parts) {
+        prefix += p + '/';
+        if (!cur.sub[prefix]) cur.sub[prefix] = { files: [], sub: {}, prefix };
+        cur = cur.sub[prefix];
+      }
+      cur.files.push({ ...f, _fileName: fileName });
+    }
+    return root;
+  },
+
+  /* 渲染整个目录树到 #directory-tree */
+  render() {
+    const container = document.getElementById('directory-tree');
+    const collapsed = this._getCollapsed();
+    const tree = this._buildTree(state.files);
+
+    // 构建 DOM
+    const frag = document.createDocumentFragment();
+
+    // 先渲染根目录文件
+    for (const f of tree.files) {
+      frag.appendChild(this._renderFileNode(f, true));
+    }
+
+    // 再按层级渲染目录
+    // 按前缀长度排序，短的先渲染（浅目录先于深目录）
+    const allFolders = Object.values(tree.sub);
+    allFolders.sort((a, b) => a.prefix.length - b.prefix.length);
+
+    // 根层级目录：前缀只含一个 / 或无前缀斜杠的
+    const rootLevel = allFolders.filter(f => (f.prefix.match(/\//g) || []).length === 1);
+    const rendered = new Set();
+
+    const renderFolder = (node, depth) => {
+      if (rendered.has(node.prefix)) return;
+      rendered.add(node.prefix);
+
+      const el = this._renderFolderNode(node, depth, collapsed);
+      frag.appendChild(el);
+
+      // 渲染子目录
+      const subs = Object.values(node.sub);
+      subs.sort((a, b) => a.prefix.length - b.prefix.length);
+      for (const sub of subs) {
+        renderFolder(sub, depth + 1);
+      }
+    };
+
+    for (const f of rootLevel) renderFolder(f, 0);
+
+    // 其他孤立目录（根层级没覆盖的，兜底渲染）
+    for (const f of allFolders) {
+      if (!rendered.has(f.prefix)) renderFolder(f, 0);
+    }
+
+    container.innerHTML = '';
+    container.appendChild(frag);
+
+    // 绑定点击事件（使用事件委托 —— 在 container 上统一监听）
+    this._bindEvents();
+  },
+
+  /* 渲染一个目录节点 */
+  _renderFolderNode(node, depth, collapsed) {
+    const isCollapsed = collapsed.includes(node.prefix);
+    const el = document.createElement('div');
+    el.className = 'tree-folder';
+    el.dataset.prefix = node.prefix;
+
+    const header = document.createElement('div');
+    header.className = 'tree-folder-header';
+    header.dataset.prefix = node.prefix;
+
+    const icon = document.createElement('span');
+    icon.className = 'folder-icon';
+    icon.textContent = isCollapsed ? '▶' : '▼';
+
+    const name = document.createElement('span');
+    name.className = 'folder-name';
+    // 显示目录名（最后一段 + 斜杠）
+    const parts = node.prefix.split('/').filter(Boolean);
+    name.textContent = (parts.pop() || node.prefix) + '/';
+
+    const count = document.createElement('span');
+    count.className = 'folder-count';
+    const totalFiles = this._countAllFiles(node);
+    count.textContent = totalFiles;
+
+    header.appendChild(icon);
+    header.appendChild(name);
+    if (totalFiles > 0) header.appendChild(count);
+    el.appendChild(header);
+
+    if (!isCollapsed) {
+      const children = document.createElement('div');
+      children.className = 'tree-folder-children';
+
+      // 文件
+      for (const f of node.files) {
+        children.appendChild(this._renderFileNode(f, false));
+      }
+
+      // 子目录
+      const subs = Object.values(node.sub);
+      subs.sort((a, b) => a.prefix.length - b.prefix.length);
+      for (const sub of subs) {
+        children.appendChild(this._renderFolderNode(sub, depth + 1, collapsed));
+      }
+
+      el.appendChild(children);
+    }
+
+    return el;
+  },
+
+  /* 递归统计目录下所有文件数 */
+  _countAllFiles(node) {
+    let c = node.files.length;
+    for (const sub of Object.values(node.sub)) c += this._countAllFiles(sub);
+    return c;
+  },
+
+  /* 渲染一个文件节点 */
+  _renderFileNode(file, isRootLevel) {
+    const el = document.createElement('div');
+    el.className = 'tree-file' + (isRootLevel ? ' tree-root-file' : '') +
+      (file.id === state.currentFileId ? ' file-active' : '');
+    el.dataset.id = file.id;
+    el.title = file.docPath;
+
+    const icon = document.createElement('span');
+    icon.className = 'file-icon';
+    // 根据 docPath 后缀给不同 emoji
+    const ext = file.docPath.split('.').pop().toLowerCase();
+    const iconMap = { md: '📝', markdown: '📝', txt: '📄', json: '📋', js: '📜', ts: '📜', py: '🐍' };
+    icon.textContent = iconMap[ext] || '📄';
+
+    const name = document.createElement('span');
+    name.className = 'file-name';
+    name.textContent = file.name || file._fileName;
+
+    const pathBadge = document.createElement('span');
+    pathBadge.className = 'file-path';
+    pathBadge.textContent = file._fileName;
+
+    el.appendChild(icon);
+    el.appendChild(name);
+    if (file.id !== state.currentFileId) el.appendChild(pathBadge);
+
+    return el;
+  },
+
+  /* 事件委托：在 directory-tree container 上统一监听 click */
+  _bindEvents() {
+    const container = document.getElementById('directory-tree');
+    // 用 once 的方式？不，目录树每次 render 都重建 DOM，所以每次 render 后重新绑
+    container.onclick = (e) => {
+      // 点击目录 header
+      const folderHeader = e.target.closest('.tree-folder-header');
+      if (folderHeader) {
+        const prefix = folderHeader.dataset.prefix;
+        this._toggleFolder(prefix);
+        return;
+      }
+      // 点击文件
+      const fileNode = e.target.closest('.tree-file');
+      if (fileNode) {
+        const id = fileNode.dataset.id;
+        if (id && id !== state.currentFileId) {
+          Storage.switchToFile(id);
+          this.render(); // 重新渲染（currentFileId 变了，高亮要更新）
+        }
+        return;
+      }
+    };
+  },
+
+  /* 切换某个目录的折叠状态 */
+  _toggleFolder(prefix) {
+    const collapsed = this._getCollapsed();
+    const idx = collapsed.indexOf(prefix);
+    if (idx >= 0) collapsed.splice(idx, 1);
+    else collapsed.push(prefix);
+    this._saveCollapsed(collapsed);
+    this.render();
+  },
+
+  /* ========== 抽屉显隐 ========== */
+  initSidebar() {
+    const saved = localStorage.getItem(DT_KEY_SIDEBAR);
+    const open = saved === null ? false : saved === 'true'; // 默认隐藏
+    if (open) this.open();
+    else this.close();
+    this.render();
+  },
+
+  toggle() {
+    const sb = document.getElementById('sidebar');
+    if (sb.classList.contains('sidebar-hidden')) this.open();
+    else this.close();
+  },
+
+  open() {
+    const sb = document.getElementById('sidebar');
+    sb.classList.remove('sidebar-hidden');
+    document.getElementById('btn-toggle-sidebar').classList.add('active');
+    localStorage.setItem(DT_KEY_SIDEBAR, 'true');
+  },
+
+  close() {
+    const sb = document.getElementById('sidebar');
+    sb.classList.add('sidebar-hidden');
+    document.getElementById('btn-toggle-sidebar').classList.remove('active');
+    localStorage.setItem(DT_KEY_SIDEBAR, 'false');
+  },
+};
+
+/* 目录树按钮绑定 */
+document.getElementById('btn-toggle-sidebar').onclick = () => DirectoryTree.toggle();
+
+/* ==================== Layer 7: 启动 ==================== */
+Editor.init();
+// 目录树侧边栏初始化（等 Editor.init 内部 Files.updateSwitcher 执行完 state.files 才就绪后再渲染一次）
+// 但 Files.updateSwitcher 已经自动调了 DirectoryTree.render()，这里主要是 initSidebar 的显隐状态恢复
+DirectoryTree.initSidebar();
+</script>
+</body>
+</html>
