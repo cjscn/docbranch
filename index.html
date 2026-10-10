@@ -2,6 +2,8 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
 <title>文档递归批注工具</title>
 <style>
 /* ========== 白色主题 ========== */
@@ -519,6 +521,256 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* 根目录文件（无父目录）—— 左缩进为 10px（和目录 header 对齐） */
 .tree-file.tree-root-file { padding-left: 14px; }
+
+/* ========== 移动端 Markdown 渲染区（桌面端隐藏） ========== */
+#mobile-markdown {
+  display: none;
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  background: #ffffff;
+  line-height: 1.75;
+  font-size: 15px;
+  color: #24292f;
+}
+#mobile-markdown h1, #mobile-markdown h2, #mobile-markdown h3 {
+  margin: 1.2em 0 0.6em; font-weight: 600; line-height: 1.3;
+}
+#mobile-markdown h1 { font-size: 1.6em; border-bottom: 1px solid #d0d7de; padding-bottom: 0.3em; }
+#mobile-markdown h2 { font-size: 1.35em; border-bottom: 1px solid #eaeef2; padding-bottom: 0.25em; }
+#mobile-markdown h3 { font-size: 1.15em; }
+#mobile-markdown p { margin: 0.8em 0; }
+#mobile-markdown ul, #mobile-markdown ol { padding-left: 1.8em; margin: 0.6em 0; }
+#mobile-markdown li { margin: 0.3em 0; }
+#mobile-markdown blockquote {
+  border-left: 3px solid #d0d7de; padding: 0.2em 0.8em;
+  color: #57606a; background: #f6f8fa; margin: 0.8em 0;
+}
+#mobile-markdown pre {
+  background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px;
+  padding: 12px; overflow-x: auto; margin: 0.8em 0;
+}
+#mobile-markdown code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  background: #f6f8fa; padding: 1px 4px; border-radius: 3px; font-size: 0.9em;
+}
+#mobile-markdown pre code { background: transparent; padding: 0; }
+#mobile-markdown mark.ann-highlight {
+  background: #fff3b0; padding: 1px 2px; border-radius: 2px;
+  cursor: pointer; transition: background 0.15s;
+}
+#mobile-markdown mark.ann-highlight.active {
+  background: #ffd43b; box-shadow: 0 0 0 2px #0969da;
+}
+#mobile-markdown mark.ann-highlight:active { filter: brightness(0.9); }
+
+/* ========== 移动端底部批注面板（桌面端隐藏） ========== */
+#mobile-panel {
+  display: none;
+  position: fixed;
+  left: 0; right: 0;
+  bottom: 0;
+  background: #f6f8fa;
+  border-top: 1px solid #d0d7de;
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+  z-index: 2000;
+  flex-direction: column;
+  max-height: 70vh;
+  min-height: 0;
+}
+#mobile-panel .panel-handle {
+  flex-shrink: 0;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  user-select: none;
+  padding-top: 6px;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+#mobile-panel .panel-handle:active { cursor: grabbing; }
+#mobile-panel .panel-handle::before {
+  content: '';
+  width: 36px; height: 4px;
+  background: #d0d7de;
+  border-radius: 2px;
+}
+#mobile-panel .panel-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 16px 10px;
+  gap: 10px;
+}
+#mobile-panel .panel-title {
+  font-size: 14px; font-weight: 600; color: #24292f;
+}
+#mobile-panel .panel-count {
+  font-size: 12px; color: #57606a;
+}
+#mobile-panel .panel-search {
+  flex: 1;
+  background: #fff; border: 1px solid #d0d7de;
+  padding: 6px 10px; border-radius: 6px;
+  font-size: 13px; outline: none;
+}
+#mobile-panel .panel-search:focus { border-color: #0969da; }
+#mobile-panel .panel-filter {
+  background: #fff; border: 1px solid #d0d7de;
+  padding: 6px 4px; border-radius: 6px;
+  font-size: 12px; outline: none;
+}
+#mobile-panel .panel-bottom-btn {
+  background: #fff; border: 1px solid #d0d7de;
+  width: 28px; height: 28px; border-radius: 6px;
+  font-size: 14px; cursor: pointer; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s;
+}
+#mobile-panel .panel-bottom-btn:active { background: #eaeef2; }
+#mobile-panel .panel-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 12px 12px;
+}
+#mobile-panel .panel-list:empty::before {
+  content: '暂无批注 ✍️';
+  display: block; text-align: center; padding: 30px 0;
+  color: #57606a; font-size: 13px;
+}
+
+/* 移动端批注卡片微调 */
+#mobile-panel .card {
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+#mobile-panel .card .note-body { font-size: 14px; line-height: 1.6; }
+#mobile-panel .card .source-text { font-size: 12px; }
+
+/* ========== 移动端汉堡全屏抽屉（桌面端隐藏） ========== */
+#mobile-drawer {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: #fff;
+  z-index: 3000;
+  flex-direction: column;
+  transform: translateX(-100%);
+  transition: transform 0.25s ease;
+}
+#mobile-drawer.drawer-open { transform: translateX(0); }
+#mobile-drawer .drawer-header {
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px;
+  background: #f6f8fa; border-bottom: 1px solid #d0d7de;
+  padding-top: calc(14px + env(safe-area-inset-top));
+}
+#mobile-drawer .drawer-title { font-size: 15px; font-weight: 600; color: #24292f; }
+#mobile-drawer .drawer-close {
+  background: none; border: none; font-size: 22px;
+  color: #57606a; padding: 4px 10px; cursor: pointer;
+}
+#mobile-drawer .drawer-close:active { color: #0969da; }
+#mobile-drawer .drawer-body {
+  flex: 1; overflow-y: auto; padding: 8px 0;
+}
+
+/* ========== 移动端浮动添加批注按钮（桌面端隐藏） ========== */
+#mobile-add-btn {
+  display: none;
+  position: fixed;
+  background: #0969da;
+  color: #fff;
+  border: none;
+  border-radius: 20px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(9,105,218,0.4);
+  z-index: 4000;
+  cursor: pointer;
+  animation: mobile-add-pop 0.18s ease-out;
+}
+#mobile-add-btn:active { filter: brightness(0.9); }
+@keyframes mobile-add-pop {
+  from { opacity: 0; transform: scale(0.85); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* ========== @media 移动端布局切换 ========== */
+@media (max-width: 768px) {
+  /* 移动端专用视口高度 + safe-area（桌面端零影响） */
+  html, body { height: 100dvh; }
+  body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); overflow: hidden; }
+
+  /* 隐藏桌面端主区域（完全隐藏，不占 flex 空间） */
+  #main { display: none !important; }
+
+  /* 隐藏桌面端元素 */
+  #toolbar { height: 44px; }
+  #toolbar .sep { display: none; }
+  #toolbar .file-switcher { display: none; }
+  /* 移动端只保留：汉堡、高亮、拉取、提交、设置 —— 隐藏编辑/虚线等 */
+  #toolbar button:not(#btn-toggle-sidebar):not(#btn-toggle-highlight):not(#btn-gh-pull):not(#btn-gh-push):not(#btn-gh-settings) { display: none; }
+  #toolbar #btn-new-file, #btn-rename-file, #btn-delete-file, #btn-export, #btn-import, #btn-clear { display: none !important; }
+  #toolbar #file-input { display: none !important; }
+
+  /* 主区域：移动端用 flex column，左右分栏隐藏 */
+  #main { flex-direction: column; }
+  #sidebar { display: none !important; }
+  #left { display: none !important; }
+  #splitter { display: none !important; }
+  #right { display: none !important; }
+
+  /* 显示移动端 Markdown 渲染区，底部预留面板空间（JS 动态同步） */
+  #mobile-markdown { display: block; flex: 1; padding-bottom: calc(var(--panel-height, 50vh) + 12px); }
+
+  /* 显示底部批注面板 */
+  #mobile-panel { display: flex; }
+
+  /* 显示汉堡抽屉（初始隐藏，由 JS 控制 transform） */
+  #mobile-drawer { display: flex; }
+
+  /* 工具栏移动端按钮替换 */
+  #toolbar {
+    padding: 0 10px;
+    gap: 8px;
+  }
+  #toolbar .brand {
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 50%;
+  }
+  #toolbar .status { display: none; }
+  #toolbar #btn-toggle-sidebar { font-size: 16px; padding: 4px 10px; }
+
+  /* 汉堡抽屉展开时，遮罩层 */
+  body.drawer-overlay::after {
+    content: '';
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.35);
+    z-index: 2500;
+  }
+
+  /* Monaco 容器完全隐藏 */
+  #monaco-container { display: none !important; }
+  #monaco-container canvas { display: none !important; }
+  .monaco-editor, .monaco-editor-background, .monaco-editor-container { display: none !important; }
+
+  /* 虚线指引层隐藏 */
+  #guideline-layer { display: none !important; }
+}
+
+/* ========== @media 横屏移动端（更宽时优化） ========== */
+@media (max-width: 768px) and (orientation: landscape) {
+  #mobile-panel { max-height: 80vh; }
+}
 </style>
 </head>
 <body>
@@ -592,6 +844,43 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 <!-- 自定义右键菜单容器 -->
 <div id="ctx-menu-container"></div>
+
+<!-- ========== 移动端 Markdown 渲染区（替代 Monaco） ========== -->
+<div id="mobile-markdown"></div>
+
+<!-- ========== 移动端底部批注面板 ========== -->
+<div id="mobile-panel">
+  <div class="panel-handle" id="panel-handle"></div>
+  <div class="panel-header">
+    <span class="panel-title">📝 批注</span>
+    <span class="panel-count" id="mobile-panel-count">0 条</span>
+    <input type="text" class="panel-search" id="mobile-search" placeholder="🔍 搜索..." />
+    <select class="panel-filter" id="mobile-tag-filter">
+      <option value="">🏷️</option>
+      <option value="definition">定义</option>
+      <option value="formula">公式</option>
+      <option value="rule">规则</option>
+      <option value="todo">待确认</option>
+      <option value="__none__">无标签</option>
+    </select>
+    <button class="panel-bottom-btn" id="panel-bottom-btn" title="展开到底部">⬇️</button>
+  </div>
+  <div class="panel-list" id="mobile-annotation-list"></div>
+</div>
+
+<!-- ========== 移动端汉堡全屏抽屉 ========== -->
+<div id="mobile-drawer">
+  <div class="drawer-header">
+    <span class="drawer-title">📂 资源管理器</span>
+    <button class="drawer-close" id="drawer-close">✕</button>
+  </div>
+  <div class="drawer-body">
+    <div id="mobile-directory-tree" class="directory-tree" style="padding: 8px 0;"></div>
+  </div>
+</div>
+
+<!-- ========== 移动端浮动添加批注按钮 ========== -->
+<button id="mobile-add-btn">➕ 添加批注</button>
 
 <!-- 仅 Monaco Editor AMD Loader（其他依赖全内联，避免 ORB 拦截） -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.js"></script>
@@ -732,6 +1021,7 @@ function escapeHtml(str) {
 /* 全局状态 */
 const state = {
   monaco: null,              // Monaco Editor 实例
+  docContent: '',            // 文档内容缓存（移动端无 Monaco 时使用）
   annotations: [],           // 当前文件的批注树
   decorations: [],           // Monaco 装饰器 ids
   showHighlight: true,       // 全局高亮开关
@@ -782,9 +1072,11 @@ const Storage = {
 
   saveCurrent() {
     if (!state.currentFileId) return;
+    // 移动端没有 Monaco，用 state.docContent 缓存值
+    const docContent = state.monaco ? state.monaco.getValue() : (state.docContent || '');
     const data = {
       version: DATA_VERSION,
-      docContent: state.monaco ? state.monaco.getValue() : '',
+      docContent,
       annotations: state.annotations,
       collapsedIds: Array.from(state.collapsedIds),
     };
@@ -865,15 +1157,21 @@ const Storage = {
     // 3. 加载目标文件数据
     const data = this.loadFile(id);
     const docContent = data ? data.docContent : DEFAULT_DOC;
+    state.docContent = docContent;
     state.annotations = data ? data.annotations : [];
     state.collapsedIds = new Set(data && Array.isArray(data.collapsedIds) ? data.collapsedIds : []);
-    // 4. Monaco setValue（会触发 didChangeModelContent，但 switchingFile=true 跳过保存）
-    state.monaco.setValue(docContent);
+    // 4. 同步到 Monaco（桌面端有）
+    if (state.monaco) state.monaco.setValue(docContent);
     // 5. 刷新 UI
-    Annotations.refreshTopLevelStatus();
-    Highlight.refreshAll();
-    RightPanel.render();
-    Files.updateSwitcher();
+    if (state.monaco) {
+      Annotations.refreshTopLevelStatus();
+      Highlight.refreshAll();
+      RightPanel.render();
+      Files.updateSwitcher();
+    } else {
+      // 移动端：通知 MobileReader 刷新
+      document.dispatchEvent(new CustomEvent('mobile-file-switch', { detail: { id } }));
+    }
     // 6. 解除切换标志（放 setTimeout 保证 didChange 事件已处理完）
     setTimeout(() => { state.switchingFile = false; }, 50);
     UI.setSaveStatus(`已切换到「${state.files.find(f=>f.id===id)?.name || '未知'}」`);
@@ -1090,6 +1388,7 @@ const Editor = {
     // 3. 加载当前文件数据
     const currentData = Storage.loadFile(state.currentFileId);
     const initialContent = currentData ? currentData.docContent : DEFAULT_DOC;
+    state.docContent = initialContent; // 同步缓存
     state.annotations = currentData ? currentData.annotations : [];
     state.collapsedIds = new Set(currentData && Array.isArray(currentData.collapsedIds) ? currentData.collapsedIds : []);
 
@@ -1111,6 +1410,7 @@ const Editor = {
 
     // 内容变更监听 —— 防抖保存 + 刷新高亮 + 状态检测
     state.monaco.onDidChangeModelContent(() => {
+      state.docContent = state.monaco.getValue(); // 同步缓存（避免桌面→移动端切换时内容过期）
       Annotations.refreshTopLevelStatus();
       Highlight.refreshAll();
       RightPanel.render();
@@ -2014,6 +2314,568 @@ const Files = {
   },
 };
 
+/* ==================== Layer 5.5: 移动端阅读模式 ==================== */
+const MobileReader = {
+  _isMobile: false,
+
+  /* 判断是否移动端（首次用媒体查询，后续用 resize 事件） */
+  isMobile() {
+    return window.matchMedia('(max-width: 768px)').matches;
+  },
+
+  init() {
+    this._isMobile = this.isMobile();
+    if (!this._isMobile) return;
+
+    // 移动端不加载 Monaco —— 先确保 AMD loader 不阻塞（require.config 在 Editor.init 里）
+    // 但 Monaco loader.js 仍然会加载（HTML 里已引用），require 是全局的，只是我们不调用 Editor.init()
+    // 在移动端改用直接初始化流程
+
+    // 1. 先从 v1 迁移（Storage 层独立，不依赖 Monaco）
+    Storage.migrateV1toV2();
+
+    // 2. 加载文件索引
+    let idx = Storage.loadIndex();
+    if (!idx || !idx.files || idx.files.length === 0) {
+      const f = Storage.createFile('未命名文档', 'docs/未命名.md');
+      idx = { currentFileId: f.id, files: [f] };
+    }
+    state.files = idx.files;
+    state.currentFileId = idx.currentFileId || idx.files[0].id;
+
+    // 3. 加载当前文件数据
+    const currentData = Storage.loadFile(state.currentFileId);
+    const initialContent = currentData ? currentData.docContent : DEFAULT_DOC;
+    state.annotations = currentData ? currentData.annotations : [];
+    state.collapsedIds = new Set(currentData && Array.isArray(currentData.collapsedIds) ? currentData.collapsedIds : []);
+    state.docContent = initialContent; // 移动端也存一份文档内容
+
+    // 4. 渲染
+    this.renderMarkdown();
+    this.renderAnnotations();
+    this.renderMobileDirectory();
+
+    // 5. 绑定交互
+    this._bindTouchSelection();
+    this._bindPanelDrag();
+    this._bindDrawer();
+    this._bindFilter();
+
+    // 6. 底部面板默认展开一半（50vh）
+    this._setPanelHeight('50vh');
+
+    // 7. 监听文件切换
+    document.addEventListener('mobile-file-switch', () => {
+      this.renderMarkdown();
+      this.renderAnnotations();
+    });
+
+    // 8. resize 处理
+    window.addEventListener('resize', () => {
+      this._isMobile = this.isMobile();
+    });
+
+    console.log('[MobileReader] 移动端阅读模式已启动');
+  },
+
+  /* 渲染 Markdown + 批注高亮 */
+  renderMarkdown() {
+    const container = document.getElementById('mobile-markdown');
+    if (!container || !state.docContent) return;
+
+    // 先用 simpleMarkdown 渲染
+    let html = simpleMarkdown(state.docContent);
+    container.innerHTML = html;
+
+    // 注入顶层批注高亮（复用 TreeWalker + sourceText indexOf 方案）
+    this._injectAnnotationHighlights(container);
+  },
+
+  /* 在渲染后的 Markdown DOM 中注入批注高亮 */
+  _injectAnnotationHighlights(container) {
+    if (!state.annotations || state.annotations.length === 0) return;
+
+    for (const ann of state.annotations) {
+      if (ann.parentId !== null) continue; // 只处理顶层批注
+      if (ann.status === 'orphaned') continue;
+      const source = ann.sourceText;
+      if (!source || source.length === 0) continue;
+
+      // 检查是否已经高亮过
+      if (container.querySelector(`mark.ann-highlight[data-ann-id="${ann.id}"]`)) continue;
+
+      const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+      const textNodes = [];
+      let node;
+      while ((node = walker.nextNode())) textNodes.push(node);
+
+      for (const txtNode of textNodes) {
+        const text = txtNode.textContent;
+        const idx = text.indexOf(source);
+        if (idx !== -1) {
+          const parent = txtNode.parentNode;
+          if (!parent) continue;
+          // 避免在 code/pre 内包裹（这些区域文本匹配不精确）—— 跳过继续找
+          if (parent.closest('code, pre')) continue;
+
+          const before = document.createTextNode(text.substring(0, idx));
+          const mark = document.createElement('mark');
+          mark.className = 'ann-highlight';
+          mark.dataset.annId = ann.id;
+          mark.textContent = source;
+          const after = document.createTextNode(text.substring(idx + source.length));
+          parent.replaceChild(after, txtNode);
+          parent.insertBefore(mark, after);
+          parent.insertBefore(before, mark);
+
+          // 点击高亮 → 定位批注卡片
+          mark.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this._scrollToAnnotation(ann.id);
+          });
+          break;
+        }
+      }
+    }
+  },
+
+  /* 渲染底部批注面板 */
+  renderAnnotations() {
+    const list = document.getElementById('mobile-annotation-list');
+    const countEl = document.getElementById('mobile-panel-count');
+    if (!list) return;
+
+    // 筛选
+    const search = (document.getElementById('mobile-search')?.value || '').toLowerCase();
+    const tagFilter = document.getElementById('mobile-tag-filter')?.value || '';
+
+    let filtered = state.annotations.filter(a => {
+      if (a.parentId !== null) return false; // 顶层批注
+      if (a.status === 'orphaned') return false;
+      if (search) {
+        const match = (a.sourceText || '').toLowerCase().includes(search) ||
+                      (a.note || '').toLowerCase().includes(search);
+        if (!match) {
+          // 子批注命中也算 —— 但这里先只显示顶层，子批注在卡片里内嵌
+          return false;
+        }
+      }
+      if (tagFilter) {
+        if (tagFilter === '__none__' && a.tag !== null) return false;
+        if (tagFilter !== '__none__' && a.tag !== tagFilter) return false;
+      }
+      return true;
+    });
+
+    countEl.textContent = `${filtered.length} 条`;
+
+    // 渲染卡片（含内嵌子批注）
+    list.innerHTML = filtered.map(ann => this._renderCardTree(ann)).join('');
+
+    // 绑定所有卡片交互（顶层和子层）
+    list.querySelectorAll('.card').forEach(cardEl => {
+      const id = cardEl.dataset.id;
+      const ann = state.annotations.find(a => a.id === id);
+      if (!ann) return;
+
+      // 点击卡片 → 定位（顶层滚文档，子批注不触发滚文档因为没有独立锚点）
+      cardEl.addEventListener('click', (e) => {
+        if (e.target.closest('.card-actions, button, textarea, .card-children')) return;
+        if (ann.parentId === null) this._scrollToAnnotation(id);
+      });
+
+      // 双击 → 编辑
+      cardEl.addEventListener('dblclick', (e) => {
+        if (e.target.closest('.card-actions, .card-children')) return;
+        this._enterCardEdit(cardEl, ann);
+      });
+
+      // 折叠/展开子批注
+      const toggle = cardEl.querySelector('.card-children-toggle');
+      if (toggle) {
+        toggle.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const sub = cardEl.querySelector('.card-children');
+          if (sub) {
+            const hidden = sub.style.display === 'none';
+            sub.style.display = hidden ? '' : 'none';
+            toggle.textContent = hidden ? '🔻 收起' : '▶️ 展开';
+          }
+        });
+      }
+    });
+  },
+
+  /* 渲染批注卡片树（含子批注） */
+  _renderCardTree(ann, depth = 0) {
+    const tagInfo = ann.tag ? TAG_MAP[ann.tag] : null;
+    const tagChip = tagInfo ? `<span class="tag-chip" style="background:${tagInfo.color}">${tagInfo.label}</span>` : '';
+    const source = UI.escapeHtml(ann.sourceText || '');
+    const noteHtml = simpleMarkdown(ann.note || '');
+    const children = (ann.children || []).filter(c => c.status !== 'orphaned');
+    const isStale = ann.status === 'stale';
+
+    const indent = depth * 12; // 子批注缩进
+
+    let html = `
+      <div class="card ${ann.tag ? 'tag-' + ann.tag : ''} ${isStale ? 'stale' : ''}" data-id="${ann.id}" style="margin-left:${indent}px">
+        ${tagChip}
+        ${isStale ? '<span class="stale-tag">⚠️ 锚点偏移</span>' : ''}
+        <div class="source-text">「${source}」</div>
+        <div class="note-body">${noteHtml}</div>
+    `;
+
+    if (children.length > 0) {
+      html += `<div class="card-children-toggle" style="font-size:11px;color:#0969da;margin-top:6px;cursor:pointer;user-select:none;padding:4px 0;">▶️ 展开 ${children.length} 条子批注</div>`;
+      html += `<div class="card-children" style="display:none;margin-top:8px;border-left:2px solid #d0d7de;padding-left:8px;">`;
+      for (const child of children) {
+        html += this._renderCardTree(child, depth + 1);
+      }
+      html += `</div>`;
+    }
+
+    html += `</div>`;
+    return html;
+  },
+
+  /* 渲染移动端目录树（汉堡抽屉内） */
+  renderMobileDirectory() {
+    const container = document.getElementById('mobile-directory-tree');
+    if (!container) return;
+    // 复用 DirectoryTree.render() 的逻辑，但目标容器不同
+    // 简单做法：先 render 到原容器，再 innerHTML 复制过来
+    DirectoryTree.render();
+    const original = document.getElementById('directory-tree');
+    container.innerHTML = original ? original.innerHTML : '';
+
+    // 重绑点击事件（因为 innerHTML 会销毁原事件）
+    container.querySelectorAll('.tree-file').forEach(el => {
+      el.addEventListener('click', () => {
+        const fileId = el.dataset.id; // DirectoryTree 用的是 data-id
+        if (fileId && fileId !== state.currentFileId) {
+          Storage.switchToFile(fileId);
+          this.renderMarkdown();
+          this.renderAnnotations();
+          this.renderMobileDirectory();
+          this.hideDrawer();
+          // 同步桌面端 file-select（如果有的话）
+          const fs = document.getElementById('file-select');
+          if (fs) fs.value = fileId;
+        }
+      });
+    });
+    // 重绑目录折叠
+    container.querySelectorAll('.tree-folder-header').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const folder = el.parentElement;
+        folder.classList.toggle('folder-collapsed');
+      });
+    });
+  },
+
+  /* 滚动到指定批注的高亮位置 */
+  _scrollToAnnotation(annId) {
+    const container = document.getElementById('mobile-markdown');
+    if (!container) return;
+    // 先清除旧 active
+    container.querySelectorAll('mark.ann-highlight.active').forEach(m => m.classList.remove('active'));
+    const mark = container.querySelector(`mark.ann-highlight[data-ann-id="${annId}"]`);
+    if (mark) {
+      mark.classList.add('active');
+      // 用 scrollTop 精确滚动，避开 fixed 底部面板遮挡
+      const containerRect = container.getBoundingClientRect();
+      const markRect = mark.getBoundingClientRect();
+      const offset = markRect.top - containerRect.top + container.scrollTop;
+      // 目标位置：mark 上方留 40px（约 2 行），同时避开底部面板（大约 50vh）
+      const target = Math.max(0, offset - 40);
+      container.scrollTo({ top: target, behavior: 'smooth' });
+
+      // 同时高亮底部面板的卡片
+      const cardList = document.getElementById('mobile-annotation-list');
+      if (cardList) {
+        cardList.querySelectorAll('.card.active').forEach(c => c.classList.remove('active'));
+        const card = cardList.querySelector(`.card[data-id="${annId}"]`);
+        if (card) {
+          card.classList.add('active');
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          setTimeout(() => card.classList.remove('active'), 800);
+        }
+      }
+      setTimeout(() => mark.classList.remove('active'), 2000);
+    } else {
+      container.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  },
+
+  /* ========== 汉堡抽屉 ========== */
+  showDrawer() {
+    const drawer = document.getElementById('mobile-drawer');
+    drawer.classList.add('drawer-open');
+    document.body.classList.add('drawer-overlay');
+    this.renderMobileDirectory();
+  },
+
+  hideDrawer() {
+    const drawer = document.getElementById('mobile-drawer');
+    drawer.classList.remove('drawer-open');
+    document.body.classList.remove('drawer-overlay');
+  },
+
+  _bindDrawer() {
+    const btn = document.getElementById('btn-toggle-sidebar');
+    const closeBtn = document.getElementById('drawer-close');
+    if (btn) btn.addEventListener('click', () => this.showDrawer());
+    if (closeBtn) closeBtn.addEventListener('click', () => this.hideDrawer());
+    // 点击遮罩关闭
+    document.addEventListener('click', (e) => {
+      if (document.body.classList.contains('drawer-overlay') &&
+          !e.target.closest('#mobile-drawer') &&
+          !e.target.closest('#btn-toggle-sidebar')) {
+        this.hideDrawer();
+      }
+    });
+  },
+
+  /* ========== 底部面板拖拽 ========== */
+  _bindPanelDrag() {
+    const handle = document.getElementById('panel-handle');
+    const panel = document.getElementById('mobile-panel');
+    const bottomBtn = document.getElementById('panel-bottom-btn');
+    if (!handle || !panel) return;
+
+    let startY = 0, startHeight = 0, dragging = false;
+    let lastTouchEnd = 0; // 抑制 touchend→click 双触发
+    const MIN_PANEL = 80;   // 最小收起高度（标题条）
+    const HALF_VH = 50;     // 默认半展开
+    const FULL_VH = 85;     // 全展开（留 15% 给顶部 Markdown 不被完全遮挡）
+
+    handle.addEventListener('touchstart', (e) => {
+      dragging = true;
+      startY = e.touches[0].clientY;
+      startHeight = panel.getBoundingClientRect().height;
+      e.preventDefault();
+    }, { passive: false });
+
+    handle.addEventListener('touchmove', (e) => {
+      if (!dragging) return;
+      const dy = startY - e.touches[0].clientY; // 向上拖 → 增加高度
+      const maxPx = window.innerHeight * FULL_VH / 100;
+      const minPx = MIN_PANEL;
+      const newHeight = Math.max(minPx, Math.min(maxPx, startHeight + dy));
+      panel.style.height = newHeight + 'px';
+      panel.style.maxHeight = 'none';
+      // 实时同步 CSS 变量
+      document.documentElement.style.setProperty('--panel-height', newHeight + 'px');
+      e.preventDefault();
+    }, { passive: false });
+
+    handle.addEventListener('touchend', () => {
+      if (!dragging) return;
+      dragging = false;
+      lastTouchEnd = Date.now();
+      // 松手吸附到三档
+      const h = panel.getBoundingClientRect().height;
+      const vh = window.innerHeight;
+      const ratio = h / vh;
+
+      let target;
+      if (ratio < 0.25) target = MIN_PANEL;              // 收起
+      else if (ratio < 0.7) target = HALF_VH + 'vh';    // 半展开
+      else target = FULL_VH + 'vh';                      // 全展开
+
+      panel.style.height = '';
+      panel.style.maxHeight = target;
+      this._setPanelHeight(target);
+    });
+
+    // 点击 handle 切换收起/半展开
+    handle.addEventListener('click', () => {
+      if (Date.now() - lastTouchEnd < 400) return; // 抑制 touchend 合成 click
+      const current = panel.dataset.panelState || 'half';
+      if (current === 'half') this._setPanelHeight(MIN_PANEL);
+      else this._setPanelHeight(HALF_VH + 'vh');
+    });
+
+    // ⬇️ 至底按钮：全展开
+    if (bottomBtn) {
+      bottomBtn.addEventListener('click', () => {
+        const current = panel.dataset.panelState || 'half';
+        if (current === 'full') {
+          // 全展开 → 半展开
+          this._setPanelHeight(HALF_VH + 'vh');
+          bottomBtn.textContent = '⬇️';
+          bottomBtn.title = '展开到底部';
+        } else {
+          // 非全展开 → 全展开
+          this._setPanelHeight(FULL_VH + 'vh');
+          bottomBtn.textContent = '⬆️';
+          bottomBtn.title = '收起一半';
+        }
+      });
+    }
+  },
+
+  _setPanelHeight(height) {
+    const panel = document.getElementById('mobile-panel');
+    if (!panel) return;
+    panel.style.height = '';
+    panel.style.maxHeight = height;
+    // 同步 CSS 变量，让 #mobile-markdown 的 padding-bottom 跟上
+    document.documentElement.style.setProperty('--panel-height', height);
+
+    // 记录状态
+    if (height === 80 || height === '80px') panel.dataset.panelState = 'collapsed';
+    else if (height === '50vh') panel.dataset.panelState = 'half';
+    else panel.dataset.panelState = 'full';
+  },
+
+  /* ========== 触屏选文字 → 浮动添加按钮 ========== */
+  _bindTouchSelection() {
+    const container = document.getElementById('mobile-markdown');
+    const addBtn = document.getElementById('mobile-add-btn');
+    if (!container || !addBtn) return;
+
+    // 监听 selection change
+    document.addEventListener('selectionchange', () => {
+      if (!this._isMobile) return;
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) {
+        addBtn.style.display = 'none';
+        return;
+      }
+
+      const text = sel.toString().trim();
+      if (text.length === 0) {
+        addBtn.style.display = 'none';
+        return;
+      }
+
+      // 确认选中范围在 mobile-markdown 内
+      const range = sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+      if (!range || !container.contains(range.commonAncestorContainer)) {
+        addBtn.style.display = 'none';
+        return;
+      }
+
+      // 定位按钮到选区上方
+      const rect = range.getBoundingClientRect();
+      addBtn.style.display = 'block';
+      addBtn.style.left = Math.max(8, rect.left + rect.width / 2 - 60) + 'px';
+      addBtn.style.top = Math.max(48, rect.top - 44) + 'px';
+
+      // 存入选中文字
+      addBtn.dataset.sourceText = text;
+    });
+
+    // 点击浮动按钮 → 打开批注输入框
+    addBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const sourceText = addBtn.dataset.sourceText;
+      if (!sourceText) return;
+
+      // 隐藏浮动按钮
+      addBtn.style.display = 'none';
+      window.getSelection().removeAllRanges();
+
+      this._showAddAnnotationModal(sourceText);
+    });
+
+    // 点击其他地方 → 隐藏浮动按钮
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#mobile-add-btn')) {
+        // 给 selectionchange 留时间处理
+        setTimeout(() => {
+          const sel = window.getSelection();
+          if (!sel || sel.isCollapsed) addBtn.style.display = 'none';
+        }, 50);
+      }
+    });
+  },
+
+  /* 移动端新建批注弹窗 —— 自建不依赖 Modal._afterAnnotation */
+  _showAddAnnotationModal(sourceText) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <h3>📝 添加批注</h3>
+        <div class="selected-preview">${UI.escapeHtml(sourceText)}</div>
+        ${Modal._tagSelectHtml()}
+        <textarea id="mobile-add-note" placeholder="输入批注说明，支持 Markdown 语法..."></textarea>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="mobile-add-cancel">取消</button>
+          <button class="btn-primary" id="mobile-add-save">保存</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const noteInput = overlay.querySelector('#mobile-add-note');
+    const tagSelect = overlay.querySelector('#modal-tag');
+    noteInput.focus();
+
+    const close = () => overlay.remove();
+    overlay.querySelector('#mobile-add-cancel').onclick = close;
+
+    overlay.querySelector('#mobile-add-save').onclick = () => {
+      const note = noteInput.value.trim();
+      if (!note) { noteInput.focus(); return; }
+      const tag = tagSelect.value || null;
+      const mockRange = { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: sourceText.length };
+      Annotations.addTopLevel(mockRange, sourceText, note, tag);
+      Storage.saveCurrent();
+      close();
+      this.renderMarkdown();
+      this.renderAnnotations();
+    };
+  },
+
+  /* ========== 筛选绑定 ========== */
+  _bindFilter() {
+    const search = document.getElementById('mobile-search');
+    const tagFilter = document.getElementById('mobile-tag-filter');
+    if (search) search.addEventListener('input', () => this.renderAnnotations());
+    if (tagFilter) tagFilter.addEventListener('change', () => this.renderAnnotations());
+  },
+
+  /* ========== 卡片编辑（自建弹窗） ========== */
+  _enterCardEdit(cardEl, ann) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <h3>✏️ 编辑批注</h3>
+        <div class="selected-preview">「${UI.escapeHtml(ann.sourceText || '')}」</div>
+        <textarea id="mobile-edit-note" placeholder="输入批注内容..." style="min-height:100px">${UI.escapeHtml(ann.note || '')}</textarea>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="mobile-edit-cancel">取消</button>
+          <button class="btn-primary" id="mobile-edit-save">保存</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const textarea = overlay.querySelector('#mobile-edit-note');
+    textarea.focus();
+
+    const close = () => overlay.remove();
+    overlay.querySelector('#mobile-edit-cancel').onclick = close;
+    overlay.querySelector('#mobile-edit-save').onclick = () => {
+      const newNote = textarea.value.trim();
+      if (!newNote) { textarea.focus(); return; }
+      const oldNote = ann.note || '';
+      ann.note = newNote;
+      // 父批注编辑后，重算子批注偏移
+      Annotations.recalcChildOffsets(ann.id, oldNote, newNote);
+      Storage.saveCurrent();
+      close();
+      this.renderMarkdown();
+      this.renderAnnotations();
+    };
+  },
+};
+
 /* ==================== Layer 6: UI 工具 + 工具栏 ==================== */
 const UI = {
   escapeHtml(str) {
@@ -2042,6 +2904,13 @@ const UI = {
     btn.textContent = state.showHighlight ? '👁️ 高亮' : '👁️‍🗨️ 隐藏高亮';
     btn.classList.toggle('active', !state.showHighlight);
     Highlight.refreshAll();
+    // 移动端：用 CSS 去掉/恢复 mark 高亮背景
+    const mdContainer = document.getElementById('mobile-markdown');
+    if (mdContainer) {
+      mdContainer.querySelectorAll('mark.ann-highlight').forEach(m => {
+        m.style.background = state.showHighlight ? '' : 'transparent';
+      });
+    }
   },
 
   exportJson() {
@@ -3496,11 +4365,15 @@ const DirectoryTree = {
 document.getElementById('btn-toggle-sidebar').onclick = () => DirectoryTree.toggle();
 
 /* ==================== Layer 7: 启动 ==================== */
-Editor.init();
-// 目录树侧边栏初始化（等 Editor.init 内部 Files.updateSwitcher 执行完 state.files 才就绪后再渲染一次）
-// 但 Files.updateSwitcher 已经自动调了 DirectoryTree.render()，这里主要是 initSidebar 的显隐状态恢复
-DirectoryTree.initSidebar();
-Guideline.init();
+if (window.matchMedia('(max-width: 768px)').matches) {
+  // 移动端：跳过 Monaco，用阅读模式
+  MobileReader.init();
+} else {
+  // 桌面端：原有流程
+  Editor.init();
+  DirectoryTree.initSidebar();
+  Guideline.init();
+}
 
 /* ==================== Layer 8: 拖拽分割线 ==================== */
 const Splitter = {
