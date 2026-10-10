@@ -2637,18 +2637,20 @@ const MobileReader = {
     });
   },
 
-  /* ========== 底部面板拖拽 ========== */
+  /* ========== 底部面板拖拽（三档：收起/对半分/顶部） ========== */
   _bindPanelDrag() {
     const handle = document.getElementById('panel-handle');
     const panel = document.getElementById('mobile-panel');
     const bottomBtn = document.getElementById('panel-bottom-btn');
     if (!handle || !panel) return;
 
+    // 三档高度（统一用 vh 字符串，避免数字/字符串混用导致的状态错乱）
+    const H_COLLAPSED = '12vh';   // 收起：只露标题条（图一）
+    const H_HALF      = '50vh';   // 对半分（图二）
+    const H_FULL      = '90vh';   // 顶部：几乎全屏（图三）
+
     let startY = 0, startHeight = 0, dragging = false;
-    let lastTouchEnd = 0; // 抑制 touchend→click 双触发
-    const MIN_PANEL = 80;   // 最小收起高度（标题条）
-    const HALF_VH = 50;     // 默认半展开
-    const FULL_VH = 85;     // 全展开（留 15% 给顶部 Markdown 不被完全遮挡）
+    let lastTouchEnd = 0;
 
     handle.addEventListener('touchstart', (e) => {
       dragging = true;
@@ -2659,13 +2661,13 @@ const MobileReader = {
 
     handle.addEventListener('touchmove', (e) => {
       if (!dragging) return;
-      const dy = startY - e.touches[0].clientY; // 向上拖 → 增加高度
-      const maxPx = window.innerHeight * FULL_VH / 100;
-      const minPx = MIN_PANEL;
-      const newHeight = Math.max(minPx, Math.min(maxPx, startHeight + dy));
+      const dy = startY - e.touches[0].clientY; // 向上拖 → 面板变高
+      const vh = window.innerHeight;
+      const MAX_PX = vh * 0.92;  // 硬上限 92vh（绝对不允许超过）
+      const MIN_PX = vh * 0.10;  // 硬下限 10vh
+      const newHeight = Math.max(MIN_PX, Math.min(MAX_PX, startHeight + dy));
       panel.style.height = newHeight + 'px';
       panel.style.maxHeight = 'none';
-      // 实时同步 CSS 变量
       document.documentElement.style.setProperty('--panel-height', newHeight + 'px');
       e.preventDefault();
     }, { passive: false });
@@ -2674,60 +2676,69 @@ const MobileReader = {
       if (!dragging) return;
       dragging = false;
       lastTouchEnd = Date.now();
-      // 松手吸附到三档
+
       const h = panel.getBoundingClientRect().height;
       const vh = window.innerHeight;
       const ratio = h / vh;
 
       let target;
-      if (ratio < 0.25) target = MIN_PANEL;              // 收起
-      else if (ratio < 0.7) target = HALF_VH + 'vh';    // 半展开
-      else target = FULL_VH + 'vh';                      // 全展开
+      if (ratio < 0.3) target = H_COLLAPSED;  // <30% → 收起
+      else if (ratio < 0.7) target = H_HALF;  // 30%-70% → 对半
+      else target = H_FULL;                   // >70% → 顶部
 
-      panel.style.height = '';
-      panel.style.maxHeight = target;
       this._setPanelHeight(target);
     });
 
-    // 点击 handle 切换收起/半展开
+    // 点击 handle 切换：对半 ↔ 收起
     handle.addEventListener('click', () => {
-      if (Date.now() - lastTouchEnd < 400) return; // 抑制 touchend 合成 click
-      const current = panel.dataset.panelState || 'half';
-      if (current === 'half') this._setPanelHeight(MIN_PANEL);
-      else this._setPanelHeight(HALF_VH + 'vh');
+      if (Date.now() - lastTouchEnd < 400) return;
+      const state = panel.dataset.panelState || 'half';
+      if (state === 'collapsed') this._setPanelHeight(H_HALF);
+      else this._setPanelHeight(H_COLLAPSED);
     });
 
-    // ⬇️ 至底按钮：全展开
+    // ⬇️ 按钮：对半 ↔ 顶部
     if (bottomBtn) {
       bottomBtn.addEventListener('click', () => {
-        const current = panel.dataset.panelState || 'half';
-        if (current === 'full') {
-          // 全展开 → 半展开
-          this._setPanelHeight(HALF_VH + 'vh');
+        const state = panel.dataset.panelState || 'half';
+        if (state === 'full') {
+          this._setPanelHeight(H_HALF);
           bottomBtn.textContent = '⬇️';
           bottomBtn.title = '展开到底部';
         } else {
-          // 非全展开 → 全展开
-          this._setPanelHeight(FULL_VH + 'vh');
+          this._setPanelHeight(H_FULL);
           bottomBtn.textContent = '⬆️';
-          bottomBtn.title = '收起一半';
+          bottomBtn.title = '收起到对半';
         }
       });
     }
   },
 
+  /* 设置面板高度并同步状态和 CSS 变量（只接受 vh 字符串） */
   _setPanelHeight(height) {
     const panel = document.getElementById('mobile-panel');
     if (!panel) return;
-    panel.style.height = '';
-    panel.style.maxHeight = height;
-    // 同步 CSS 变量，让 #mobile-markdown 的 padding-bottom 跟上
+
+    panel.style.height = '';       // 清掉内联 px 高度
+    panel.style.maxHeight = height; // 用 vh 字符串设档位
     document.documentElement.style.setProperty('--panel-height', height);
 
-    // 记录状态
-    if (height === 80 || height === '80px') panel.dataset.panelState = 'collapsed';
+    // 统一用 vh 字符串比较（数字 80 现在不用了）
+    if (height === '12vh') panel.dataset.panelState = 'collapsed';
     else if (height === '50vh') panel.dataset.panelState = 'half';
-    else panel.dataset.panelState = 'full';
+    else panel.dataset.panelState = 'full'; // 90vh 等都算 full
+
+    // 同步底部按钮图标
+    const bottomBtn = document.getElementById('panel-bottom-btn');
+    if (bottomBtn) {
+      if (panel.dataset.panelState === 'full') {
+        bottomBtn.textContent = '⬆️';
+        bottomBtn.title = '收起到对半';
+      } else {
+        bottomBtn.textContent = '⬇️';
+        bottomBtn.title = '展开到底部';
+      }
+    }
   },
 
   /* ========== 触屏选文字 → 浮动添加按钮 ========== */
