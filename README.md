@@ -33,16 +33,19 @@ docbranch 就是为解决这些问题设计的。
 | 💾 **持久化** | localStorage 自动保存（500ms 防抖）+ JSON 手动导入/导出 |
 | 🔍 **辅助能力** | 搜索过滤、全局高亮开关、批注统计、子批注折叠、快捷键 |
 | 🎨 **白色主题** | GitHub 风格，高亮色 `#0969da`，Monaco `vs` 主题 |
+| 🏷️ **批注标签系统** | 4 种预设标签（定义/公式/规则/待确认），右栏按标签筛选（不持久化） |
+| ✏️ **卡片编辑修改** | 双击批注说明进入编辑态，Ctrl+Enter 保存 / Esc 取消；父批注 note 变更后自动重算子批注偏移量 |
+| 🎯 **SVG 红色虚线指引** | 顶层 SVG 悬浮层 + 贝塞尔虚线，默认智能模式（hover/聚焦触发），三态开关 |
+| ↔️ **拖拽分割线** | 30%-80% 比例范围，双击重置 60:40，位置持久化 |
 
-### 🗺️ 路线图（详见 `specs/`）
+### 🗺️ 三期路线图（详见 `specs/`）
 
-| 序号 | 功能 | Spec |
-|------|------|------|
-| 2.4 | SVG 红色虚线指引连线 | [feature-guideline-lines.md](specs/feature-guideline-lines.md) |
-| 2.5 | 拖拽分割线（30%-80%） | [feature-split-resize.md](specs/feature-split-resize.md) |
-| 2.6 | 批注标签系统（定义/公式/规则/待确认） | [feature-annotation-tags.md](specs/feature-annotation-tags.md) |
-| 2.7 | 批注卡片编辑修改（含偏移量重算） | [feature-card-edit.md](specs/feature-card-edit.md) |
-| 3.x | Markdown 实时预览面板、版本对比、多人协作 | — |
+| 功能 | 说明 |
+|------|------|
+| Markdown 实时预览面板 | 三栏：编辑 ｜ 预览 ｜ 批注 |
+| 导出带批注的 Markdown | 批注以脚注形式内嵌 |
+| 文档版本对比 | 原文 + 批注变更差异 |
+| 多人协作批注 | WebSocket 或 GitHub Issues 集成 |
 
 ## 快速开始
 
@@ -100,14 +103,14 @@ docbranch/
 │   ├── 需求.md              ← 完整 PRD
 │   └── images/              ← 截图等静态资源
 └── specs/                  ← 功能规格（单功能单文件）
-    ├── feature-annotation.md       ← 一期：批注核心
+    ├── feature-annotation.md       ← 一期已实现：批注核心
     ├── feature-multi-file.md       ← 二期已实现：多文件
     ├── feature-github-sync.md      ← 二期已实现：GitHub 同步
     ├── feature-directory-tree.md   ← 二期已实现：目录树
-    ├── feature-guideline-lines.md  ← 规划中：SVG 连线
-    ├── feature-split-resize.md     ← 规划中：拖拽分割线
-    ├── feature-annotation-tags.md  ← 规划中：标签系统
-    └── feature-card-edit.md        ← 规划中：卡片编辑
+    ├── feature-guideline-lines.md  ← 二期已实现：SVG 虚线指引
+    ├── feature-split-resize.md     ← 二期已实现：拖拽分割线
+    ├── feature-annotation-tags.md  ← 二期已实现：标签系统
+    └── feature-card-edit.md        ← 二期已实现：卡片编辑
 ```
 
 ## 技术栈
