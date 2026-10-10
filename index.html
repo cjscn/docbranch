@@ -78,6 +78,29 @@ body { background: #ffffff; color: #24292f; display: flex; flex-direction: colum
 }
 .card .source-text:hover { background: rgba(9,105,218,0.22); }
 
+/* ========== SVG 虚线指引连线层 ========== */
+#guideline-layer {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 9999;
+}
+#guideline-layer path {
+  stroke: #ff6b6b; stroke-width: 2; fill: none;
+  stroke-dasharray: 6 4; stroke-linecap: round;
+}
+#guideline-layer .guideline-line.focused { stroke: #d97706; }
+#guideline-layer.hidden { display: none; }
+
+/* ========== 子批注高亮 mark 样式 ========== */
+mark.sub-anchor {
+  background: rgba(9,105,218,0.18); border-bottom: 2px solid #0969da;
+  cursor: pointer; border-radius: 2px; padding: 0 1px;
+}
+mark.sub-anchor:hover { background: rgba(9,105,218,0.32); }
+
+/* ========== 卡片 hover 激活态（虚线指引智能模式） ========== */
+.card.guideline-hover { box-shadow: 0 0 0 2px #ff6b6b; }
+.card.guideline-focused { box-shadow: 0 0 0 2px #d97706; }
+
 .card .note-content {
   font-size: 13px; line-height: 1.6; color: #24292f;
 }
@@ -447,6 +470,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
   <button id="btn-readonly" title="切换只读/编辑">✏️ 编辑模式</button>
   <button id="btn-toggle-highlight" title="全局高亮开关">👁️ 高亮</button>
+  <button id="btn-toggle-guideline" title="虚线指引：智能模式（hover/聚焦触发）｜点击切换：智能 → 全部显示 → 关闭">🔗 虚线</button>
   <span class="sep"></span>
   <button id="btn-export" title="导出 JSON (Ctrl+Shift+E)">📤 导出</button>
   <button id="btn-import" title="导入 JSON (Ctrl+Shift+I)">📥 导入</button>
@@ -491,6 +515,9 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 <!-- 仅 Monaco Editor AMD Loader（其他依赖全内联，避免 ORB 拦截） -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.js"></script>
 
+<!-- SVG 虚线指引连线层（指针事件穿透；必须在主 <script> 之前，保证 Guideline.init() 能获取到） -->
+<svg id="guideline-layer" xmlns="http://www.w3.org/2000/svg"></svg>
+
 <script>
 /* ================================================================
  *  文档递归批注工具 —— 主脚本
@@ -509,6 +536,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 const INDEX_KEY = 'doc-branch-index-v1';           // 文件索引 key
 const FILE_KEY_PREFIX = 'doc-branch-files/';       // 每个文件的 key 前缀
 const DATA_VERSION = 2;                             // 数据格式版本（从 1 升到 2，支持多文件）
+const GUIDELINE_MODE_KEY = 'doc-branch-guideline-mode-v1'; // 虚线指引三态：smart / all / off
 const DEFAULT_DOC = `# 示例文档: 号码筛选规则
 
 不选任何条件 | 该维度不过滤, 全部 80 个号码通过.
@@ -619,6 +647,11 @@ const state = {
   readOnly: false,            // 只读模式
   searchKeyword: '',          // 搜索关键词
   collapsedIds: new Set(),   // 被折叠的批注 id 集合
+
+  /* ====== 虚线指引连线 ====== */
+  guidelineMode: 'smart',    // 'smart' | 'all' | 'off'
+  guidelineFocusedIds: new Set(), // 智能模式下被聚焦的批注 id（点击保持的）
+  guidelineHoverId: null,    // 当前 hover 的批注 id（鼠标悬停）
 
   /* ====== 多文件新增 ====== */
   currentFileId: null,       // 当前激活的文件 id
@@ -1728,6 +1761,389 @@ const UI = {
   },
 };
 
+/* ==================== Guideline: SVG 虚线指引连线 ==================== */
+const Guideline = {
+  _svg: null,
+  _debounceTimer: null,
+
+  /* ---------- 初始化 ---------- */
+  init() {
+    // 恢复持久化模式
+    try {
+      const saved = localStorage.getItem(GUIDELINE_MODE_KEY);
+      if (saved === 'smart' || saved === 'all' || saved === 'off') {
+        state.guidelineMode = saved;
+      }
+    } catch (e) {}
+
+    this._svg = document.getElementById('guideline-layer');
+    this._updateButtonUI();
+    this._bindEvents();
+    this.render();
+  },
+
+  /* ---------- 绑定事件：hover、点击、滚动、resize、折叠 ---------- */
+  _bindEvents() {
+    // 右栏卡片 hover（事件委托到 annotation-list）
+    const list = document.getElementById('annotation-list');
+    list.addEventListener('mouseover', (e) => {
+      if (state.guidelineMode !== 'smart') return;
+      const card = e.target.closest('.card');
+      if (!card) return;
+      if (card.classList.contains('orphaned')) return;
+      const id = card.dataset.id;
+      if (!id || state.guidelineHoverId === id) return;
+      state.guidelineHoverId = id;
+      card.classList.add('guideline-hover');
+      this._debouncedRender();
+    });
+    list.addEventListener('mouseout', (e) => {
+      if (state.guidelineMode !== 'smart') return;
+      const card = e.target.closest('.card');
+      if (!card) return;
+      // 检查是否真正移出了卡片（mouseout 会冒泡到子元素，用 relatedTarget 判断）
+      if (card.contains(e.relatedTarget)) return;
+      const id = card.dataset.id;
+      card.classList.remove('guideline-hover');
+      if (state.guidelineHoverId === id) state.guidelineHoverId = null;
+      this._debouncedRender();
+    });
+
+    // 卡片点击：聚焦 / 取消聚焦（智能模式）
+    list.addEventListener('click', (e) => {
+      const card = e.target.closest('.card');
+      if (!card) return;
+      const id = card.dataset.id;
+      if (!id) return;
+      if (card.classList.contains('orphaned')) return;
+
+      if (state.guidelineMode === 'smart') {
+        if (state.guidelineFocusedIds.has(id)) {
+          state.guidelineFocusedIds.delete(id);
+          card.classList.remove('guideline-focused');
+        } else {
+          state.guidelineFocusedIds.add(id);
+          card.classList.add('guideline-focused');
+          // 右栏卡片点击 → 左栏滚动定位（一级批注才有 range）
+          const ann = Annotations.findById(id);
+          if (ann && ann.parentId === null && ann.status !== 'orphaned') {
+            Highlight.scrollTo(ann.range);
+          }
+        }
+        this._debouncedRender();
+      }
+      // 永久显示模式下 Shift 点击 = 多激活叠加
+      else if (state.guidelineMode === 'all' && e.shiftKey) {
+        if (state.guidelineFocusedIds.has(id)) {
+          state.guidelineFocusedIds.delete(id);
+          card.classList.remove('guideline-focused');
+        } else {
+          state.guidelineFocusedIds.add(id);
+          card.classList.add('guideline-focused');
+        }
+        this._debouncedRender();
+      }
+    });
+
+    // 左栏高亮文本点击 → 触发对应的虚线指引（智能模式）
+    const monacoDom = document.getElementById('monaco-container');
+    monacoDom.addEventListener('click', (e) => {
+      if (state.guidelineMode !== 'smart') return;
+      // Monaco 内部 text 点击后，需要找到对应的 range
+      // 通过 monaco 的当前 selection 或 装饰器位置来定位
+      const annIds = this._findAnnotationsAtClickPoint();
+      if (annIds.length > 0) {
+        // 聚焦第一个匹配的
+        const id = annIds[0];
+        state.guidelineFocusedIds.add(id);
+        const card = document.querySelector(`.card[data-id="${CSS.escape(id)}"]`);
+        if (card) {
+          card.classList.add('guideline-focused');
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        this._debouncedRender();
+      }
+    });
+
+    // Esc 清除所有临时聚焦
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (state.guidelineFocusedIds.size > 0 || state.guidelineHoverId) {
+          state.guidelineFocusedIds.clear();
+          state.guidelineHoverId = null;
+          document.querySelectorAll('.card.guideline-hover, .card.guideline-focused')
+            .forEach(c => c.classList.remove('guideline-hover', 'guideline-focused'));
+          this.render();
+        }
+      }
+    });
+
+    // 滚动：Monaco + 右栏
+    const debouncedRender = () => this._debouncedRender();
+    if (state.monaco) {
+      state.monaco.onDidScrollChange(debouncedRender);
+    }
+    const rightPanel = document.getElementById('right');
+    rightPanel.addEventListener('scroll', debouncedRender);
+
+    // window resize
+    window.addEventListener('resize', debouncedRender);
+
+    // 右栏 DOM 变化（RightPanel.render() 重建卡片后自动重绘）
+    const mo = new MutationObserver(() => {
+      this._debouncedRender();
+    });
+    mo.observe(list, { childList: true, subtree: true });
+  },
+
+  /* ---------- 三态切换 ---------- */
+  toggleMode() {
+    const order = ['smart', 'all', 'off'];
+    const idx = order.indexOf(state.guidelineMode);
+    state.guidelineMode = order[(idx + 1) % 3];
+
+    // 模式切换时清理临时聚焦态
+    state.guidelineFocusedIds.clear();
+    state.guidelineHoverId = null;
+    document.querySelectorAll('.card.guideline-hover, .card.guideline-focused')
+      .forEach(c => c.classList.remove('guideline-hover', 'guideline-focused'));
+
+    try { localStorage.setItem(GUIDELINE_MODE_KEY, state.guidelineMode); } catch (e) {}
+    this._updateButtonUI();
+    this.render();
+  },
+
+  _updateButtonUI() {
+    const btn = document.getElementById('btn-toggle-guideline');
+    if (!btn) return;
+    const labels = { smart: '🔗 虚线', all: '🔗 全连', off: '🔗 关闭' };
+    const titles = {
+      smart: '虚线指引：智能模式（hover/聚焦触发）｜点击切换',
+      all: '虚线指引：永久显示全部｜点击切换',
+      off: '虚线指引：已关闭｜点击切换',
+    };
+    btn.textContent = labels[state.guidelineMode];
+    btn.title = titles[state.guidelineMode];
+    btn.classList.toggle('active', state.guidelineMode !== 'smart');
+  },
+
+  /* ---------- 防抖重绘（16ms ≈ 1 帧） ---------- */
+  _debouncedRender() {
+    if (this._debounceTimer) clearTimeout(this._debounceTimer);
+    this._debounceTimer = setTimeout(() => this.render(), 16);
+  },
+
+  /* ---------- 主渲染方法 ---------- */
+  render() {
+    if (!this._svg) return;
+
+    // 先清理所有旧的 guideline class，再根据当前 state 重新标记
+    document.querySelectorAll('.card.guideline-hover, .card.guideline-focused')
+      .forEach(c => c.classList.remove('guideline-hover', 'guideline-focused'));
+
+    // 过滤掉已经不存在于 annotations 中的 id（删除/刷新后）
+    const validIds = new Set();
+    const walkAll = (list) => {
+      for (const a of list) {
+        validIds.add(a.id);
+        if (a.children && a.children.length) walkAll(a.children);
+      }
+    };
+    walkAll(state.annotations);
+    state.guidelineFocusedIds = new Set([...state.guidelineFocusedIds].filter(id => validIds.has(id)));
+    if (state.guidelineHoverId && !validIds.has(state.guidelineHoverId)) state.guidelineHoverId = null;
+
+    // 给有效的 card DOM 重新打标记（RightPanel.render() 重建 DOM 后补标记）
+    state.guidelineFocusedIds.forEach(id => {
+      const card = document.querySelector(`.card[data-id="${CSS.escape(id)}"]`);
+      if (card) card.classList.add('guideline-focused');
+    });
+    if (state.guidelineHoverId) {
+      const card = document.querySelector(`.card[data-id="${CSS.escape(state.guidelineHoverId)}"]`);
+      if (card) card.classList.add('guideline-hover');
+    }
+
+    // 关闭模式：隐藏 SVG 并清空所有 path
+    if (state.guidelineMode === 'off') {
+      this._svg.classList.add('hidden');
+      this._svg.innerHTML = '';
+      return;
+    }
+
+    this._svg.classList.remove('hidden');
+
+    // 根据模式确定需要绘制的批注 id 集合
+    let targetIds = new Set();
+
+    if (state.guidelineMode === 'smart') {
+      // 智能模式：hover + 聚焦的
+      if (state.guidelineHoverId) targetIds.add(state.guidelineHoverId);
+      state.guidelineFocusedIds.forEach(id => targetIds.add(id));
+    } else if (state.guidelineMode === 'all') {
+      // 永久显示全部：所有可见卡片 + Shift 叠加的临时项
+      const collectAll = (list) => {
+        for (const a of list) {
+          if (a.status !== 'orphaned') targetIds.add(a.id);
+          if (a.children && a.children.length) collectAll(a.children);
+        }
+      };
+      collectAll(state.annotations);
+    }
+
+    // 清空旧 path
+    this._svg.innerHTML = '';
+
+    // 逐个绘制
+    for (const id of targetIds) {
+      const pathEl = this._buildPathForAnnotation(id);
+      if (pathEl) this._svg.appendChild(pathEl);
+    }
+  },
+
+  /* ---------- 为单个批注构建 SVG path ---------- */
+  _buildPathForAnnotation(annId) {
+    const ann = Annotations.findById(annId);
+    if (!ann || ann.status === 'orphaned') return null;
+
+    const cardEl = document.querySelector(`.card[data-id="${CSS.escape(annId)}"]`);
+    if (!cardEl) return null;
+
+    // 计算右端点：卡片左侧中点
+    const endPoint = this._getCardAnchorPoint(cardEl);
+    if (!endPoint) return null;
+
+    // 计算左端点
+    let startPoint;
+    if (ann.parentId === null) {
+      // 一级批注：Monaco range → 文字像素坐标
+      startPoint = this._getMonacoAnchorPoint(ann.range);
+    } else {
+      // 子批注：mark.sub-anchor 元素位置
+      startPoint = this._getSubAnchorPoint(ann);
+    }
+
+    if (!startPoint) return null;
+
+    // 构建贝塞尔路径
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    const d = this._buildBezierPath(startPoint, endPoint);
+    path.setAttribute('d', d);
+
+    // 智能模式下，聚焦的线加粗变色
+    if (state.guidelineMode === 'smart' && state.guidelineFocusedIds.has(annId)) {
+      path.classList.add('focused');
+    } else if (state.guidelineMode === 'all') {
+      path.classList.add('focused'); // 永久模式全部加粗
+    }
+
+    return path;
+  },
+
+  /* ---------- 一级批注：Monaco range → 屏幕像素 ---------- */
+  _getMonacoAnchorPoint(range) {
+    const monaco = state.monaco;
+    if (!monaco) return null;
+
+    const editorDom = monaco.getDomNode();
+    const editorRect = editorDom.getBoundingClientRect();
+    const layoutInfo = monaco.getLayoutInfo();
+    const scrollTop = monaco.getScrollTop();
+    const scrollLeft = monaco.getScrollLeft();
+
+    // 行 y 坐标
+    const topStart = monaco.getTopForLineNumber(range.startLineNumber);
+    const topEnd = monaco.getTopForLineNumber(range.endLineNumber);
+    const startY = editorRect.top + topStart - scrollTop;
+    const endY = editorRect.top + topEnd - scrollTop;
+
+    // 字符宽度（Canvas 测量）
+    const fontSize = monaco.getOption('fontSize') || 14;
+    const fontFamily = monaco.getOption('fontFamily') || 'monospace';
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.font = `${fontSize}px ${fontFamily}`;
+    const charWidth = ctx.measureText('M').width || fontSize * 0.6;
+    const lineHeight = fontSize * 1.5;
+
+    // x 坐标（片段右侧）
+    const contentLeft = layoutInfo.contentLeft || 64;
+    const endX = editorRect.left + contentLeft + (range.endColumn - 1) * charWidth - scrollLeft;
+
+    // 行中点 y
+    const midY = (startY + endY) / 2 + lineHeight / 2;
+
+    // 防御性检查
+    if (isNaN(endX) || isNaN(midY)) return null;
+
+    return { x: endX, y: midY };
+  },
+
+  /* ---------- 子批注：mark.sub-anchor → 屏幕像素 ---------- */
+  _getSubAnchorPoint(childAnn) {
+    const parentId = childAnn.parentId;
+    const markEl = document.querySelector(`mark.sub-anchor[data-child-id="${CSS.escape(childAnn.id)}"]`);
+    if (!markEl) return null;
+
+    const rect = markEl.getBoundingClientRect();
+    // mark 的**右侧中点**作为锚点
+    return {
+      x: rect.right,
+      y: rect.top + rect.height / 2
+    };
+  },
+
+  /* ---------- 卡片锚点：左侧中点 ---------- */
+  _getCardAnchorPoint(cardEl) {
+    const rect = cardEl.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) return null; // 折叠隐藏
+    return {
+      x: rect.left,
+      y: rect.top + rect.height / 2
+    };
+  },
+
+  /* ---------- 贝塞尔曲线路径（向上拱起 25px） ---------- */
+  _buildBezierPath(start, end) {
+    const dx = end.x - start.x;
+    const midX = (start.x + end.x) / 2;
+    const rise = 25; // 向上拱起
+
+    // 两条控制点在起点和终点之间，y = min(start.y, end.y) - rise（向上拱）
+    const cpY = Math.min(start.y, end.y) - rise;
+
+    // 为了曲线更平滑，控制点的 x 稍微往中间偏移
+    const cp1x = start.x + dx * 0.3;
+    const cp2x = start.x + dx * 0.7;
+
+    return `M ${start.x} ${start.y} C ${cp1x} ${cpY}, ${cp2x} ${cpY}, ${end.x} ${end.y}`;
+  },
+
+  /* ---------- 根据 Monaco 当前点击位置反查批注 id 列表 ---------- */
+  _findAnnotationsAtClickPoint() {
+    const monaco = state.monaco;
+    if (!monaco) return [];
+    const sel = monaco.getSelection();
+    if (!sel || sel.isEmpty()) return [];
+
+    const model = monaco.getModel();
+    const result = [];
+    for (const ann of state.annotations) {
+      if (ann.status === 'orphaned') continue;
+      const r = ann.range;
+      // 检查 selection 是否和 annotation range 有交集
+      const overlaps = !(
+        sel.endLineNumber < r.startLineNumber ||
+        sel.startLineNumber > r.endLineNumber ||
+        (sel.startLineNumber === sel.endLineNumber &&
+         sel.startColumn === sel.endColumn &&
+         (sel.startColumn <= r.startColumn || sel.startColumn >= r.endColumn))
+      );
+      if (overlaps) result.push(ann.id);
+    }
+    return result;
+  },
+};
+
 /* 工具栏事件绑定 */
 document.getElementById('file-select').onchange = (e) => Files.onSelectChange(e);
 document.getElementById('btn-new-file').onclick = () => Files.newFile();
@@ -1736,6 +2152,7 @@ document.getElementById('btn-delete-file').onclick = () => Files.deleteCurrent()
 
 document.getElementById('btn-readonly').onclick = () => UI.toggleReadOnly();
 document.getElementById('btn-toggle-highlight').onclick = () => UI.toggleHighlight();
+document.getElementById('btn-toggle-guideline').onclick = () => Guideline.toggleMode();
 document.getElementById('btn-export').onclick = () => UI.exportJson();
 document.getElementById('btn-import').onclick = () => UI.triggerImport();
 document.getElementById('file-input').onchange = async (e) => {
@@ -2763,6 +3180,8 @@ Editor.init();
 // 目录树侧边栏初始化（等 Editor.init 内部 Files.updateSwitcher 执行完 state.files 才就绪后再渲染一次）
 // 但 Files.updateSwitcher 已经自动调了 DirectoryTree.render()，这里主要是 initSidebar 的显隐状态恢复
 DirectoryTree.initSidebar();
+Guideline.init();
 </script>
+
 </body>
 </html>
