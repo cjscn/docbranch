@@ -2749,6 +2749,7 @@ const MobileReader = {
     // ==== 缓存选区（防浏览器清选区） ====
     let _pendingSelection = null;
     let _clearPendingTimer = null;
+    let _protectUntil = 0; // 保护窗口截止时间戳
 
     const cacheSelection = () => {
       const sel = window.getSelection();
@@ -2769,7 +2770,10 @@ const MobileReader = {
           _pendingSelection = { text, parentId: card.dataset.id };
         }
       }
-      console.log('[MobileReader] _pendingSelection =', _pendingSelection);
+
+      // 缓存成功 → 开 2 秒保护窗口（鸿蒙/安卓长按会连续触发 true→false）
+      _protectUntil = Date.now() + 2000;
+      console.log('[MobileReader] _pendingSelection =', _pendingSelection, '保护至:', _protectUntil);
 
       if (_pendingSelection) {
         if (_pendingSelection.parentId) {
@@ -2783,6 +2787,11 @@ const MobileReader = {
     };
 
     const clearPendingSoon = () => {
+      // 保护窗口内 → 不清
+      if (Date.now() < _protectUntil) {
+        console.log('[MobileReader] clearPendingSoon 被保护窗口拦截');
+        return;
+      }
       clearTimeout(_clearPendingTimer);
       _clearPendingTimer = setTimeout(() => {
         console.log('[MobileReader] clearPendingSoon 清缓存');
