@@ -622,14 +622,16 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   padding: 6px 4px; border-radius: 6px;
   font-size: 12px; outline: none;
 }
-#mobile-panel .panel-bottom-btn {
-  background: #fff; border: 1px solid #d0d7de;
-  width: 28px; height: 28px; border-radius: 6px;
-  font-size: 14px; cursor: pointer; flex-shrink: 0;
+#mobile-panel .panel-add-btn {
+  background: #0969da; color: #fff; border: none;
+  width: 32px; height: 28px; border-radius: 6px;
+  font-size: 16px; font-weight: bold; cursor: pointer; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
   transition: background 0.15s;
 }
-#mobile-panel .panel-bottom-btn:active { background: #eaeef2; }
+#mobile-panel .panel-add-btn:active { background: #0550ae; }
+/* 选中批注卡片后，➕按钮变绿提示可加子批注 */
+#mobile-panel .panel-add-btn.child-mode { background: #1a7f37; }
 #mobile-panel .panel-list {
   flex: 1;
   overflow-y: auto;
@@ -677,28 +679,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 #mobile-drawer .drawer-close:active { color: #0969da; }
 #mobile-drawer .drawer-body {
   flex: 1; overflow-y: auto; padding: 8px 0;
-}
-
-/* ========== 移动端浮动添加批注按钮（桌面端隐藏） ========== */
-#mobile-add-btn {
-  display: none;
-  position: fixed;
-  background: #0969da;
-  color: #fff;
-  border: none;
-  border-radius: 20px;
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  box-shadow: 0 4px 16px rgba(9,105,218,0.4);
-  z-index: 4000;
-  cursor: pointer;
-  animation: mobile-add-pop 0.18s ease-out;
-}
-#mobile-add-btn:active { filter: brightness(0.9); }
-@keyframes mobile-add-pop {
-  from { opacity: 0; transform: scale(0.85); }
-  to { opacity: 1; transform: scale(1); }
 }
 
 /* ========== @media 移动端布局切换 ========== */
@@ -863,7 +843,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       <option value="todo">待确认</option>
       <option value="__none__">无标签</option>
     </select>
-    <button class="panel-bottom-btn" id="panel-bottom-btn" title="展开到底部">⬇️</button>
+    <button class="panel-add-btn" id="panel-add-btn" title="添加批注">➕</button>
   </div>
   <div class="panel-list" id="mobile-annotation-list"></div>
 </div>
@@ -878,9 +858,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     <div id="mobile-directory-tree" class="directory-tree" style="padding: 8px 0;"></div>
   </div>
 </div>
-
-<!-- ========== 移动端浮动添加批注按钮 ========== -->
-<button id="mobile-add-btn">➕ 添加批注</button>
 
 <!-- 仅 Monaco Editor AMD Loader（其他依赖全内联，避免 ORB 拦截） -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.js"></script>
@@ -2641,13 +2618,12 @@ const MobileReader = {
   _bindPanelDrag() {
     const handle = document.getElementById('panel-handle');
     const panel = document.getElementById('mobile-panel');
-    const bottomBtn = document.getElementById('panel-bottom-btn');
     if (!handle || !panel) return;
 
     // 三档高度（统一用 vh 字符串，避免数字/字符串混用导致的状态错乱）
-    const H_COLLAPSED = '12vh';   // 收起：只露标题条（图一）
-    const H_HALF      = '50vh';   // 对半分（图二）
-    const H_FULL      = '90vh';   // 顶部：几乎全屏（图三）
+    const H_COLLAPSED = '12vh';   // 收起：只露标题条
+    const H_HALF      = '50vh';   // 对半分
+    const H_FULL      = '90vh';   // 顶部：几乎全屏
 
     let startY = 0, startHeight = 0, dragging = false;
     let lastTouchEnd = 0;
@@ -2663,8 +2639,8 @@ const MobileReader = {
       if (!dragging) return;
       const dy = startY - e.touches[0].clientY; // 向上拖 → 面板变高
       const vh = window.innerHeight;
-      const MAX_PX = vh * 0.92;  // 硬上限 92vh（绝对不允许超过）
-      const MIN_PX = vh * 0.10;  // 硬下限 10vh
+      const MAX_PX = vh * 0.92;
+      const MIN_PX = vh * 0.10;
       const newHeight = Math.max(MIN_PX, Math.min(MAX_PX, startHeight + dy));
       panel.style.height = newHeight + 'px';
       panel.style.maxHeight = 'none';
@@ -2682,9 +2658,9 @@ const MobileReader = {
       const ratio = h / vh;
 
       let target;
-      if (ratio < 0.3) target = H_COLLAPSED;  // <30% → 收起
-      else if (ratio < 0.7) target = H_HALF;  // 30%-70% → 对半
-      else target = H_FULL;                   // >70% → 顶部
+      if (ratio < 0.3) target = H_COLLAPSED;
+      else if (ratio < 0.7) target = H_HALF;
+      else target = H_FULL;
 
       this._setPanelHeight(target);
     });
@@ -2696,112 +2672,134 @@ const MobileReader = {
       if (state === 'collapsed') this._setPanelHeight(H_HALF);
       else this._setPanelHeight(H_COLLAPSED);
     });
-
-    // ⬇️ 按钮：对半 ↔ 顶部
-    if (bottomBtn) {
-      bottomBtn.addEventListener('click', () => {
-        const state = panel.dataset.panelState || 'half';
-        if (state === 'full') {
-          this._setPanelHeight(H_HALF);
-          bottomBtn.textContent = '⬇️';
-          bottomBtn.title = '展开到底部';
-        } else {
-          this._setPanelHeight(H_FULL);
-          bottomBtn.textContent = '⬆️';
-          bottomBtn.title = '收起到对半';
-        }
-      });
-    }
   },
 
-  /* 设置面板高度并同步状态和 CSS 变量（只接受 vh 字符串） */
+  /* 设置面板高度并同步状态（只接受 vh 字符串） */
   _setPanelHeight(height) {
     const panel = document.getElementById('mobile-panel');
     if (!panel) return;
-
-    panel.style.height = '';       // 清掉内联 px 高度
-    panel.style.maxHeight = height; // 用 vh 字符串设档位
+    panel.style.height = '';
+    panel.style.maxHeight = height;
     document.documentElement.style.setProperty('--panel-height', height);
 
-    // 统一用 vh 字符串比较（数字 80 现在不用了）
     if (height === '12vh') panel.dataset.panelState = 'collapsed';
     else if (height === '50vh') panel.dataset.panelState = 'half';
-    else panel.dataset.panelState = 'full'; // 90vh 等都算 full
-
-    // 同步底部按钮图标
-    const bottomBtn = document.getElementById('panel-bottom-btn');
-    if (bottomBtn) {
-      if (panel.dataset.panelState === 'full') {
-        bottomBtn.textContent = '⬆️';
-        bottomBtn.title = '收起到对半';
-      } else {
-        bottomBtn.textContent = '⬇️';
-        bottomBtn.title = '展开到底部';
-      }
-    }
+    else panel.dataset.panelState = 'full';
   },
 
-  /* ========== 触屏选文字 → 浮动添加按钮 ========== */
+  /* ========== 添加批注统一入口（➕按钮） ========== */
   _bindTouchSelection() {
     const container = document.getElementById('mobile-markdown');
-    const addBtn = document.getElementById('mobile-add-btn');
+    const addBtn = document.getElementById('panel-add-btn');
     if (!container || !addBtn) return;
 
-    // 监听 selection change
+    // 记录最近选中的批注卡片（用于判断是加父还是加子）
+    let selectedCardId = null;
+
+    /* 选中批注卡片 → 进入子批注模式 */
+    const cardList = document.getElementById('mobile-annotation-list');
+    if (cardList) {
+      cardList.addEventListener('click', (e) => {
+        const card = e.target.closest('.card');
+        if (!card) return;
+        // 点的是操作区/编辑区 → 不触发选中
+        if (e.target.closest('.card-actions, button, textarea, input')) return;
+
+        // 清除旧选中
+        cardList.querySelectorAll('.card.selected').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        selectedCardId = card.dataset.id;
+
+        // ➕按钮变绿 → 提示"加子批注"
+        addBtn.classList.add('child-mode');
+        addBtn.title = `添加子批注`;
+      });
+    }
+
+    /* 监听 selectionchange → 有选中文本时退出子批注模式 */
     document.addEventListener('selectionchange', () => {
-      if (!this._isMobile) return;
       const sel = window.getSelection();
-      if (!sel || sel.isCollapsed) {
-        addBtn.style.display = 'none';
+      if (!sel || sel.isCollapsed || !container.contains(sel.rangeCount > 0 ? sel.getRangeAt(0).commonAncestorContainer : null)) {
+        if (!selectedCardId) {
+          addBtn.classList.remove('child-mode');
+          addBtn.title = '添加批注（先选文字或点击批注卡片）';
+        }
         return;
       }
-
-      const text = sel.toString().trim();
-      if (text.length === 0) {
-        addBtn.style.display = 'none';
-        return;
-      }
-
-      // 确认选中范围在 mobile-markdown 内
-      const range = sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
-      if (!range || !container.contains(range.commonAncestorContainer)) {
-        addBtn.style.display = 'none';
-        return;
-      }
-
-      // 定位按钮到选区上方
-      const rect = range.getBoundingClientRect();
-      addBtn.style.display = 'block';
-      addBtn.style.left = Math.max(8, rect.left + rect.width / 2 - 60) + 'px';
-      addBtn.style.top = Math.max(48, rect.top - 44) + 'px';
-
-      // 存入选中文字
-      addBtn.dataset.sourceText = text;
+      selectedCardId = null;
+      cardList?.querySelectorAll('.card.selected').forEach(c => c.classList.remove('selected'));
+      addBtn.classList.remove('child-mode');
+      addBtn.title = '添加父批注';
     });
 
-    // 点击浮动按钮 → 打开批注输入框
-    addBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      const sourceText = addBtn.dataset.sourceText;
-      if (!sourceText) return;
+    /* ➕按钮点击 → 判断加父还是加子 */
+    addBtn.addEventListener('click', () => {
+      const sel = window.getSelection();
+      const hasSelection = sel && !sel.isCollapsed && sel.toString().trim().length > 0 &&
+        sel.rangeCount > 0 && container.contains(sel.getRangeAt(0).commonAncestorContainer);
 
-      // 隐藏浮动按钮
-      addBtn.style.display = 'none';
-      window.getSelection().removeAllRanges();
-
-      this._showAddAnnotationModal(sourceText);
-    });
-
-    // 点击其他地方 → 隐藏浮动按钮
-    document.addEventListener('click', (e) => {
-      if (!e.target.closest('#mobile-add-btn')) {
-        // 给 selectionchange 留时间处理
-        setTimeout(() => {
-          const sel = window.getSelection();
-          if (!sel || sel.isCollapsed) addBtn.style.display = 'none';
-        }, 50);
+      if (hasSelection) {
+        // 加父批注
+        const text = sel.toString().trim();
+        sel.removeAllRanges();
+        this._showAddAnnotationModal(text);
+      } else if (selectedCardId) {
+        // 加子批注（用父批注的 sourceText 做锚点）
+        const parent = Annotations.findById(selectedCardId);
+        if (!parent) { selectedCardId = null; return; }
+        // 选中文本为空时，用父批注的 note 全部文本做 sourceText
+        this._showAddChildModal(parent);
+      } else {
+        // 啥都没选 → 提示
+        this._toast('请先在文档中选文字，或点击一条批注卡片');
       }
     });
+  },
+
+  /* 轻量 toast 提示 */
+  _toast(msg) {
+    const el = document.createElement('div');
+    el.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.75);color:#fff;padding:10px 20px;border-radius:8px;z-index:9999;font-size:14px;pointer-events:none;transition:opacity 0.3s;';
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; }, 1500);
+    setTimeout(() => el.remove(), 2000);
+  },
+
+  /* 移动端添加子批注弹窗 */
+  _showAddChildModal(parent) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <h3>🔗 添加子批注</h3>
+        <div style="font-size:12px;color:#57606a;margin-bottom:6px;">父批注：</div>
+        <div class="selected-preview">${UI.escapeHtml((parent.sourceText || '') + ' — ' + (parent.note || '').slice(0, 60))}</div>
+        ${Modal._tagSelectHtml()}
+        <textarea id="mobile-child-note" placeholder="输入子批注内容..."></textarea>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="mobile-child-cancel">取消</button>
+          <button class="btn-primary" id="mobile-child-save">保存</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelector('#mobile-child-cancel').onclick = close;
+    overlay.querySelector('#mobile-child-save').onclick = () => {
+      const note = overlay.querySelector('#mobile-child-note').value.trim();
+      if (!note) { close(); return; }
+      const tag = overlay.querySelector('#mobile-child-tag').value || null;
+
+      // 子批注 sourceText 设为父批注的 sourceText（偏移量暂时不精确定位）
+      const child = Annotations.addChild(parent.id, 0, parent.sourceText?.length || 0, parent.sourceText || '', note, tag);
+      if (child) {
+        Storage.saveCurrent();
+        MobileReader.refresh();
+      }
+      close();
+    };
   },
 
   /* 移动端新建批注弹窗 —— 自建不依赖 Modal._afterAnnotation */
