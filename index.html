@@ -863,12 +863,15 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.js"></script>
 
 <!-- vConsole 移动端调试（仅 dev 用，正式部署可注释掉） -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/vConsole/3.15.1/vconsole.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vconsole@3.15.1/dist/vconsole.min.js" onerror="document.getElementById('vconsole-fail')&&(document.getElementById('vconsole-fail').style.display='')"></script>
+<div id="vconsole-fail" style="display:none;position:fixed;bottom:60px;right:10px;background:#fff;border:1px solid #d0d7de;padding:8px 12px;border-radius:6px;font-size:12px;z-index:9999;max-width:220px;">vConsole加载失败，试试开科学上网或换网络</div>
 <script>
-  // 只在小屏设备自动启用 vConsole（鸿蒙/安卓/iOS 手机调试用）
-  if (window.innerWidth <= 768) {
-    window.__vConsole = new VConsole({ defaultPlugins: ['system', 'network', 'element', 'resources'] });
-  }
+  // 等脚本加载完再初始化
+  window.addEventListener('load', () => {
+    if (window.VConsole && window.innerWidth <= 768) {
+      try { new VConsole(); } catch(e) { console.warn('vConsole init fail', e); }
+    }
+  });
 </script>
 
 <!-- SVG 虚线指引连线层（指针事件穿透；必须在主 <script> 之前，保证 Guideline.init() 能获取到） -->
