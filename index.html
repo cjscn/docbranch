@@ -2691,68 +2691,111 @@ const MobileReader = {
   _bindTouchSelection() {
     const container = document.getElementById('mobile-markdown');
     const addBtn = document.getElementById('panel-add-btn');
+    const cardList = document.getElementById('mobile-annotation-list');
     if (!container || !addBtn) return;
 
-    // 记录最近选中的批注卡片（用于判断是加父还是加子）
-    let selectedCardId = null;
+    // ==== 缓存选区（防浏览器清选区） ====
+    // { text: '选中文本', parentId: 'xxx' | null }  —— parentId 非空表示加子批注
+    let _pendingSelection = null;
+    let _clearPendingTimer = null;
 
-    /* 选中批注卡片 → 进入子批注模式 */
-    const cardList = document.getElementById('mobile-annotation-list');
+    const cacheSelection = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      const text = sel.toString().trim();
+      if (!text) return;
+
+      // 选中文本在哪个容器里？
+      const ancestor = range.commonAncestorContainer;
+      const el = ancestor.nodeType === 1 ? ancestor : ancestor.parentElement;
+
+      if (container.contains(el)) {
+        // 在文档里 → 加父批注
+        _pendingSelection = { text, parentId: null };
+      } else if (cardList && cardList.contains(el)) {
+        // 在批注卡片里 → 找到所属卡片，自动加子批注
+        const card = el.closest('.card');
+        if (card) {
+          _pendingSelection = { text, parentId: card.dataset.id };
+        }
+      }
+      // 更新➕按钮提示
+      if (_pendingSelection) {
+        if (_pendingSelection.parentId) {
+          addBtn.classList.add('child-mode');
+          addBtn.title = '添加子批注';
+        } else {
+          addBtn.classList.remove('child-mode');
+          addBtn.title = '添加父批注';
+        }
+      }
+    };
+
+    const clearPendingSoon = () => {
+      // 延迟 400ms 清理 —— 防止点➕按钮的瞬间被清
+      clearTimeout(_clearPendingTimer);
+      _clearPendingTimer = setTimeout(() => {
+        _pendingSelection = null;
+        addBtn.classList.remove('child-mode');
+        addBtn.title = '添加批注（先选文字或点击批注卡片）';
+      }, 400);
+    };
+
+    // ==== 监听 selectionchange ====
+    document.addEventListener('selectionchange', () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) {
+        clearPendingSoon();
+      } else {
+        // 有选区 → 清掉延迟清理定时器，立即缓存
+        clearTimeout(_clearPendingTimer);
+        cacheSelection();
+      }
+    });
+
+    // ==== 点击批注卡片 → 手动指定加子批注（不依赖选区） ====
     if (cardList) {
       cardList.addEventListener('click', (e) => {
         const card = e.target.closest('.card');
         if (!card) return;
-        // 点的是操作区/编辑区 → 不触发选中
         if (e.target.closest('.card-actions, button, textarea, input')) return;
 
-        // 清除旧选中
-        cardList.querySelectorAll('.card.selected').forEach(c => c.classList.remove('selected'));
-        card.classList.add('selected');
-        selectedCardId = card.dataset.id;
-
-        // ➕按钮变绿 → 提示"加子批注"
-        addBtn.classList.add('child-mode');
-        addBtn.title = `添加子批注`;
+        // 点卡片 → 如果没有选中文本，就把卡片存成父批注候选
+        if (!_pendingSelection) {
+          _pendingSelection = { text: null, parentId: card.dataset.id };
+          addBtn.classList.add('child-mode');
+          addBtn.title = '添加子批注';
+        }
       });
     }
 
-    /* 监听 selectionchange → 有选中文本时退出子批注模式 */
-    document.addEventListener('selectionchange', () => {
-      const sel = window.getSelection();
-      if (!sel || sel.isCollapsed || !container.contains(sel.rangeCount > 0 ? sel.getRangeAt(0).commonAncestorContainer : null)) {
-        if (!selectedCardId) {
-          addBtn.classList.remove('child-mode');
-          addBtn.title = '添加批注（先选文字或点击批注卡片）';
-        }
+    // ==== ➕按钮点击 → 读缓存，不读实时选区 ====
+    addBtn.addEventListener('click', () => {
+      if (!_pendingSelection) {
+        this._toast('请先选文字，或点击一条批注卡片');
         return;
       }
-      selectedCardId = null;
-      cardList?.querySelectorAll('.card.selected').forEach(c => c.classList.remove('selected'));
-      addBtn.classList.remove('child-mode');
-      addBtn.title = '添加父批注';
-    });
 
-    /* ➕按钮点击 → 判断加父还是加子 */
-    addBtn.addEventListener('click', () => {
-      const sel = window.getSelection();
-      const hasSelection = sel && !sel.isCollapsed && sel.toString().trim().length > 0 &&
-        sel.rangeCount > 0 && container.contains(sel.getRangeAt(0).commonAncestorContainer);
-
-      if (hasSelection) {
+      if (_pendingSelection.parentId) {
+        // 加子批注
+        const parent = Annotations.findById(_pendingSelection.parentId);
+        if (!parent) {
+          _pendingSelection = null;
+          return;
+        }
+        this._showAddChildModal(parent, _pendingSelection.text);
+      } else if (_pendingSelection.text) {
         // 加父批注
-        const text = sel.toString().trim();
-        sel.removeAllRanges();
-        this._showAddAnnotationModal(text);
-      } else if (selectedCardId) {
-        // 加子批注（用父批注的 sourceText 做锚点）
-        const parent = Annotations.findById(selectedCardId);
-        if (!parent) { selectedCardId = null; return; }
-        // 选中文本为空时，用父批注的 note 全部文本做 sourceText
-        this._showAddChildModal(parent);
-      } else {
-        // 啥都没选 → 提示
-        this._toast('请先在文档中选文字，或点击一条批注卡片');
+        this._showAddAnnotationModal(_pendingSelection.text);
+        // 清掉浏览器选区
+        try { window.getSelection().removeAllRanges(); } catch(_) {}
       }
+
+      // 用完清缓存
+      _pendingSelection = null;
+      addBtn.classList.remove('child-mode');
+      addBtn.title = '添加批注（先选文字或点击批注卡片）';
     });
   },
 
@@ -2766,8 +2809,9 @@ const MobileReader = {
     setTimeout(() => el.remove(), 2000);
   },
 
-  /* 移动端添加子批注弹窗 */
-  _showAddChildModal(parent) {
+  /* 移动端添加子批注弹窗 —— 支持传入选中文本作为 sourceText */
+  _showAddChildModal(parent, selectedText) {
+    const sourceForChild = selectedText || parent.sourceText || '';
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
     overlay.innerHTML = `
@@ -2775,6 +2819,7 @@ const MobileReader = {
         <h3>🔗 添加子批注</h3>
         <div style="font-size:12px;color:#57606a;margin-bottom:6px;">父批注：</div>
         <div class="selected-preview">${UI.escapeHtml((parent.sourceText || '') + ' — ' + (parent.note || '').slice(0, 60))}</div>
+        ${selectedText ? `<div style="font-size:12px;color:#0969da;margin:8px 0 4px;">选中文本（作为子批注锚点）：</div><div class="selected-preview">${UI.escapeHtml(selectedText)}</div>` : ''}
         ${Modal._tagSelectHtml()}
         <textarea id="mobile-child-note" placeholder="输入子批注内容..."></textarea>
         <div class="modal-actions">
@@ -2792,8 +2837,7 @@ const MobileReader = {
       if (!note) { close(); return; }
       const tag = overlay.querySelector('#mobile-child-tag').value || null;
 
-      // 子批注 sourceText 设为父批注的 sourceText（偏移量暂时不精确定位）
-      const child = Annotations.addChild(parent.id, 0, parent.sourceText?.length || 0, parent.sourceText || '', note, tag);
+      const child = Annotations.addChild(parent.id, 0, sourceForChild.length, sourceForChild, note, tag);
       if (child) {
         Storage.saveCurrent();
         MobileReader.refresh();
