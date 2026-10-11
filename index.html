@@ -862,6 +862,15 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 <!-- 仅 Monaco Editor AMD Loader（其他依赖全内联，避免 ORB 拦截） -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.js"></script>
 
+<!-- vConsole 移动端调试（仅 dev 用，正式部署可注释掉） -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vConsole/3.15.1/vconsole.min.js"></script>
+<script>
+  // 只在小屏设备自动启用 vConsole（鸿蒙/安卓/iOS 手机调试用）
+  if (window.innerWidth <= 768) {
+    window.__vConsole = new VConsole({ defaultPlugins: ['system', 'network', 'element', 'resources'] });
+  }
+</script>
+
 <!-- SVG 虚线指引连线层（指针事件穿透；必须在主 <script> 之前，保证 Guideline.init() 能获取到） -->
 <svg id="guideline-layer" xmlns="http://www.w3.org/2000/svg"></svg>
 
@@ -2692,10 +2701,13 @@ const MobileReader = {
     const container = document.getElementById('mobile-markdown');
     const addBtn = document.getElementById('panel-add-btn');
     const cardList = document.getElementById('mobile-annotation-list');
-    if (!container || !addBtn) return;
+    if (!container || !addBtn) {
+      console.warn('[MobileReader] _bindTouchSelection 缺少元素:', { container, addBtn });
+      return;
+    }
+    console.log('[MobileReader] _bindTouchSelection 初始化完成');
 
     // ==== 缓存选区（防浏览器清选区） ====
-    // { text: '选中文本', parentId: 'xxx' | null }  —— parentId 非空表示加子批注
     let _pendingSelection = null;
     let _clearPendingTimer = null;
 
@@ -2706,21 +2718,20 @@ const MobileReader = {
       const text = sel.toString().trim();
       if (!text) return;
 
-      // 选中文本在哪个容器里？
       const ancestor = range.commonAncestorContainer;
       const el = ancestor.nodeType === 1 ? ancestor : ancestor.parentElement;
+      console.log('[MobileReader] cacheSelection 触发', { text: text.slice(0, 20), inDoc: container.contains(el), inCard: cardList?.contains(el) });
 
       if (container.contains(el)) {
-        // 在文档里 → 加父批注
         _pendingSelection = { text, parentId: null };
       } else if (cardList && cardList.contains(el)) {
-        // 在批注卡片里 → 找到所属卡片，自动加子批注
         const card = el.closest('.card');
         if (card) {
           _pendingSelection = { text, parentId: card.dataset.id };
         }
       }
-      // 更新➕按钮提示
+      console.log('[MobileReader] _pendingSelection =', _pendingSelection);
+
       if (_pendingSelection) {
         if (_pendingSelection.parentId) {
           addBtn.classList.add('child-mode');
@@ -2733,35 +2744,34 @@ const MobileReader = {
     };
 
     const clearPendingSoon = () => {
-      // 延迟 400ms 清理 —— 防止点➕按钮的瞬间被清
       clearTimeout(_clearPendingTimer);
       _clearPendingTimer = setTimeout(() => {
+        console.log('[MobileReader] clearPendingSoon 清缓存');
         _pendingSelection = null;
         addBtn.classList.remove('child-mode');
         addBtn.title = '添加批注（先选文字或点击批注卡片）';
       }, 400);
     };
 
-    // ==== 监听 selectionchange ====
     document.addEventListener('selectionchange', () => {
       const sel = window.getSelection();
-      if (!sel || sel.isCollapsed) {
+      const hasSel = sel && !sel.isCollapsed;
+      console.log('[MobileReader] selectionchange 触发, hasSelection:', hasSel, 'collapsed:', sel?.isCollapsed);
+      if (!hasSel) {
         clearPendingSoon();
       } else {
-        // 有选区 → 清掉延迟清理定时器，立即缓存
         clearTimeout(_clearPendingTimer);
         cacheSelection();
       }
     });
 
-    // ==== 点击批注卡片 → 手动指定加子批注（不依赖选区） ====
     if (cardList) {
       cardList.addEventListener('click', (e) => {
         const card = e.target.closest('.card');
         if (!card) return;
         if (e.target.closest('.card-actions, button, textarea, input')) return;
+        console.log('[MobileReader] 点击卡片:', card.dataset.id);
 
-        // 点卡片 → 如果没有选中文本，就把卡片存成父批注候选
         if (!_pendingSelection) {
           _pendingSelection = { text: null, parentId: card.dataset.id };
           addBtn.classList.add('child-mode');
@@ -2770,15 +2780,14 @@ const MobileReader = {
       });
     }
 
-    // ==== ➕按钮点击 → 读缓存，不读实时选区 ====
     addBtn.addEventListener('click', () => {
+      console.log('[MobileReader] ➕按钮点击, _pendingSelection =', _pendingSelection);
       if (!_pendingSelection) {
         this._toast('请先选文字，或点击一条批注卡片');
         return;
       }
 
       if (_pendingSelection.parentId) {
-        // 加子批注
         const parent = Annotations.findById(_pendingSelection.parentId);
         if (!parent) {
           _pendingSelection = null;
@@ -2786,13 +2795,10 @@ const MobileReader = {
         }
         this._showAddChildModal(parent, _pendingSelection.text);
       } else if (_pendingSelection.text) {
-        // 加父批注
         this._showAddAnnotationModal(_pendingSelection.text);
-        // 清掉浏览器选区
         try { window.getSelection().removeAllRanges(); } catch(_) {}
       }
 
-      // 用完清缓存
       _pendingSelection = null;
       addBtn.classList.remove('child-mode');
       addBtn.title = '添加批注（先选文字或点击批注卡片）';
