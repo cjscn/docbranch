@@ -862,16 +862,52 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 <!-- 仅 Monaco Editor AMD Loader（其他依赖全内联，避免 ORB 拦截） -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.js"></script>
 
-<!-- vConsole 移动端调试（仅 dev 用，正式部署可注释掉） -->
-<script src="https://cdn.jsdelivr.net/npm/vconsole@3.15.1/dist/vconsole.min.js" onerror="document.getElementById('vconsole-fail')&&(document.getElementById('vconsole-fail').style.display='')"></script>
-<div id="vconsole-fail" style="display:none;position:fixed;bottom:60px;right:10px;background:#fff;border:1px solid #d0d7de;padding:8px 12px;border-radius:6px;font-size:12px;z-index:9999;max-width:220px;">vConsole加载失败，试试开科学上网或换网络</div>
+<!-- 极简 console redirector（鸿蒙/安卓调试用，零外部依赖） -->
 <script>
-  // 等脚本加载完再初始化
-  window.addEventListener('load', () => {
-    if (window.VConsole && window.innerWidth <= 768) {
-      try { new VConsole(); } catch(e) { console.warn('vConsole init fail', e); }
-    }
+(function(){
+  // 只在小屏启用
+  if (window.innerWidth > 768) return;
+  var logs = [];
+  function wrap(type) {
+    var orig = console[type];
+    console[type] = function() {
+      var args = Array.prototype.slice.call(arguments);
+      logs.push({ type: type, msg: args.map(function(a){ return typeof a==='object' ? JSON.stringify(a).slice(0,200) : String(a); }).join(' ') });
+      try { orig.apply(console, arguments); } catch(e) {}
+      render();
+    };
+  }
+  wrap('log'); wrap('warn'); wrap('error'); wrap('info');
+
+  var panel, toggle;
+  function render() {
+    if (!panel) return;
+    var html = logs.slice(-30).map(function(l){
+      var color = l.type==='error' ? '#cf222e' : l.type==='warn' ? '#9a6700' : '#24292f';
+      return '<div style="color:'+color+';font-size:11px;padding:2px 6px;border-bottom:1px solid #eaeef2;word-break:break-all;">'+l.msg+'</div>';
+    }).join('');
+    panel.innerHTML = html || '<div style="color:#8c959f;padding:8px;">(暂无日志)</div>';
+    panel.scrollTop = panel.scrollHeight;
+  }
+
+  // 等 DOM ready
+  document.addEventListener('DOMContentLoaded', function(){
+    // 悬浮按钮
+    toggle = document.createElement('div');
+    toggle.textContent = '🐛';
+    toggle.style.cssText = 'position:fixed;bottom:80px;left:12px;width:36px;height:36px;background:#24292f;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:10000;font-size:18px;box-shadow:0 2px 8px rgba(0,0,0,0.3);cursor:pointer;';
+    toggle.onclick = function(){
+      if (!panel) {
+        panel = document.createElement('div');
+        panel.style.cssText = 'position:fixed;bottom:120px;left:12px;right:12px;height:200px;background:rgba(255,255,255,0.98);border:1px solid #d0d7de;border-radius:8px;z-index:10000;overflow-y:auto;font-family:monospace;box-shadow:0 4px 16px rgba(0,0,0,0.2);';
+        document.body.appendChild(panel);
+        render();
+      }
+      panel.style.display = panel.style.display === 'none' ? '' : 'none';
+    };
+    document.body.appendChild(toggle);
   });
+})();
 </script>
 
 <!-- SVG 虚线指引连线层（指针事件穿透；必须在主 <script> 之前，保证 Guideline.init() 能获取到） -->
