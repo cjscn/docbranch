@@ -3667,7 +3667,7 @@ const GitHubSync = {
     overlay.className = 'modal-overlay';
     overlay.innerHTML = `
       <div class="modal modal-lg">
-        <h3>⚙️ GitHub 同步设置</h3>
+        <h3 id="gh-settings-title">⚙️ GitHub 同步设置</h3>
         <div class="gh-config-form">
           <label>GitHub Personal Access Token</label>
           <input type="password" id="gh-token" placeholder="ghp_..." value="${cfg.token || ''}" autocomplete="off" />
@@ -3693,6 +3693,29 @@ const GitHubSync = {
     `;
     document.body.appendChild(overlay);
     const close = () => overlay.remove();
+
+    /* 彩蛋：快速连点标题 5 次切换 🐛 调试面板 */
+    (function setupEasterEgg(){
+      let clicks = 0, timer = null;
+      const WINDOW = 1500, THRESHOLD = 5;
+      overlay.querySelector('#gh-settings-title').addEventListener('click', () => {
+        clicks++;
+        clearTimeout(timer);
+        timer = setTimeout(() => { clicks = 0; }, WINDOW);
+        if (clicks >= THRESHOLD) {
+          clicks = 0;
+          const toggle = window.__debugToggle;
+          if (toggle) {
+            const isVisible = toggle.style.display !== 'none';
+            toggle.style.display = isVisible ? 'none' : 'flex';
+            if (isVisible && window.__debugPanel) {
+              window.__debugPanel.style.display = 'none';
+            }
+            UI.setSaveStatus(isVisible ? '🐛 调试面板已隐藏' : '🐛 调试面板已显示');
+          }
+        }
+      });
+    })();
 
     // 测试连接
     overlay.querySelector('#gh-test-connection').onclick = async () => {
@@ -4210,37 +4233,7 @@ const GitHubSync = {
 };
 
 /* GitHub 按钮事件绑定 */
-(function setupGhSettingsEasterEgg() {
-  const btn = document.getElementById('btn-gh-settings');
-  let clicks = 0;
-  let resetTimer = null;
-  const WINDOW_MS = 1500;  // 时间窗口
-  const THRESHOLD = 5;     // 5 次快速点击触发
-
-  btn.addEventListener('click', function(e) {
-    clicks++;
-    clearTimeout(resetTimer);
-    resetTimer = setTimeout(() => { clicks = 0; }, WINDOW_MS);
-
-    if (clicks >= THRESHOLD) {
-      clicks = 0;
-      const toggle = window.__debugToggle;
-      if (toggle) {
-        const isVisible = toggle.style.display !== 'none';
-        toggle.style.display = isVisible ? 'none' : 'flex';
-        // 隐藏时顺手关掉已打开的 debug 面板
-        if (isVisible && window.__debugPanel) {
-          window.__debugPanel.style.display = 'none';
-        }
-        UI.setSaveStatus(isVisible ? '🐛 调试面板已隐藏' : '🐛 调试面板已显示');
-      }
-      e.stopPropagation();
-      e.preventDefault();
-      return;
-    }
-    GitHubSync.openSettings();
-  });
-})();
+document.getElementById('btn-gh-settings').onclick = () => GitHubSync.openSettings();
 document.getElementById('btn-gh-push').onclick = () => GitHubSync.pushAll();
 document.getElementById('btn-gh-pull').onclick = () => GitHubSync.pullFromRemote();
 
