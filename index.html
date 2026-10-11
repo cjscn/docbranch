@@ -2746,10 +2746,8 @@ const MobileReader = {
     }
     console.log('[MobileReader] _bindTouchSelection 初始化完成');
 
-    // ==== 缓存选区（防浏览器清选区） ====
+    // ==== 缓存选区（防浏览器清选区，永不自动清，只在添加成功/主动关闭时清） ====
     let _pendingSelection = null;
-    let _clearPendingTimer = null;
-    let _protectUntil = 0; // 保护窗口截止时间戳
 
     const cacheSelection = () => {
       const sel = window.getSelection();
@@ -2770,10 +2768,7 @@ const MobileReader = {
           _pendingSelection = { text, parentId: card.dataset.id };
         }
       }
-
-      // 缓存成功 → 开 2 秒保护窗口（鸿蒙/安卓长按会连续触发 true→false）
-      _protectUntil = Date.now() + 2000;
-      console.log('[MobileReader] _pendingSelection =', _pendingSelection, '保护至:', _protectUntil);
+      console.log('[MobileReader] _pendingSelection =', _pendingSelection);
 
       if (_pendingSelection) {
         if (_pendingSelection.parentId) {
@@ -2786,33 +2781,15 @@ const MobileReader = {
       }
     };
 
-    const clearPendingSoon = () => {
-      // 保护窗口内 → 不清
-      if (Date.now() < _protectUntil) {
-        console.log('[MobileReader] clearPendingSoon 被保护窗口拦截');
-        return;
-      }
-      clearTimeout(_clearPendingTimer);
-      _clearPendingTimer = setTimeout(() => {
-        console.log('[MobileReader] clearPendingSoon 清缓存');
-        _pendingSelection = null;
-        addBtn.classList.remove('child-mode');
-        addBtn.title = '添加批注（先选文字或点击批注卡片）';
-      }, 400);
-    };
-
+    // 监听 selectionchange —— 只缓存，不清理（鸿蒙/安卓会反复触发 false，不管它）
     document.addEventListener('selectionchange', () => {
       const sel = window.getSelection();
       const hasSel = sel && !sel.isCollapsed;
-      console.log('[MobileReader] selectionchange 触发, hasSelection:', hasSel, 'collapsed:', sel?.isCollapsed);
-      if (!hasSel) {
-        clearPendingSoon();
-      } else {
-        clearTimeout(_clearPendingTimer);
-        cacheSelection();
-      }
+      console.log('[MobileReader] selectionchange, hasSelection:', hasSel);
+      if (hasSel) cacheSelection();
     });
 
+    // ==== 点击批注卡片 → 手动指定加子批注 ====
     if (cardList) {
       cardList.addEventListener('click', (e) => {
         const card = e.target.closest('.card');
@@ -2820,14 +2797,29 @@ const MobileReader = {
         if (e.target.closest('.card-actions, button, textarea, input')) return;
         console.log('[MobileReader] 点击卡片:', card.dataset.id);
 
-        if (!_pendingSelection) {
-          _pendingSelection = { text: null, parentId: card.dataset.id };
-          addBtn.classList.add('child-mode');
-          addBtn.title = '添加子批注';
-        }
+        _pendingSelection = { text: null, parentId: card.dataset.id };
+        addBtn.classList.add('child-mode');
+        addBtn.title = '添加子批注';
       });
     }
 
+    // ==== 点击文档空白处 → 清缓存（用户放弃添加） ====
+    document.addEventListener('click', (e) => {
+      // 点了文档/卡片/面板外的区域 → 清缓存
+      if (!e.target.closest('#mobile-markdown, #mobile-annotation-list, #panel-add-btn')) {
+        // 延迟一下，避免点卡片/➕按钮被误清
+        setTimeout(() => {
+          if (_pendingSelection && !_pendingSelection.parentId) {
+            _pendingSelection = null;
+            addBtn.classList.remove('child-mode');
+            addBtn.title = '添加批注（先选文字或点击批注卡片）';
+            console.log('[MobileReader] 点击空白处清缓存');
+          }
+        }, 100);
+      }
+    });
+
+    // ==== ➕按钮点击 → 读缓存 ====
     addBtn.addEventListener('click', () => {
       console.log('[MobileReader] ➕按钮点击, _pendingSelection =', _pendingSelection);
       if (!_pendingSelection) {
@@ -2837,16 +2829,14 @@ const MobileReader = {
 
       if (_pendingSelection.parentId) {
         const parent = Annotations.findById(_pendingSelection.parentId);
-        if (!parent) {
-          _pendingSelection = null;
-          return;
-        }
+        if (!parent) { _pendingSelection = null; return; }
         this._showAddChildModal(parent, _pendingSelection.text);
       } else if (_pendingSelection.text) {
         this._showAddAnnotationModal(_pendingSelection.text);
         try { window.getSelection().removeAllRanges(); } catch(_) {}
       }
 
+      // 用完清缓存
       _pendingSelection = null;
       addBtn.classList.remove('child-mode');
       addBtn.title = '添加批注（先选文字或点击批注卡片）';
