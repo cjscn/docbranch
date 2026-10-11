@@ -1690,10 +1690,18 @@ const Modal = {
     const fname = overlay.querySelector('#fname');
     const fullPath = overlay.querySelector('#nf-path');
     const recombine = () => {
-      const d = dirCustom.value.trim() || dirSel.value;
+      // baseDir 来自下拉选择（如 'docs/' 或 '' 根目录）
+      const baseDir = dirSel.value || '';
+      // subDir 来自自定义输入，作为 baseDir 的子路径（如 '简历/'）
+      let subDir = dirCustom.value.trim();
+      if (subDir) {
+        // 清理多余的首尾斜杠，保证只在末尾加一个
+        subDir = subDir.replace(/^\/+/, '').replace(/\/+$/, '');
+      }
+      let d = subDir ? baseDir + subDir + '/' : baseDir;
       let n = fname.value.trim() || '未命名.md';
       if (!n.endsWith('.md')) n += '.md';
-      fullPath.value = (d || '') + n;
+      fullPath.value = d + n;
     };
     dirSel.onchange = recombine;
     dirCustom.oninput = recombine;
@@ -4292,35 +4300,20 @@ const DirectoryTree = {
       frag.appendChild(this._renderFileNode(f, true));
     }
 
-    // 再按层级渲染目录
-    // 按前缀长度排序，短的先渲染（浅目录先于深目录）
+    // 根层级目录：前缀只含一个 / 的（如 'docs/'）
+    // 更深的子目录由 _renderFolderNode 内部自动递归嵌进去，这里只处理顶级
     const allFolders = Object.values(tree.sub);
     allFolders.sort((a, b) => a.prefix.length - b.prefix.length);
-
-    // 根层级目录：前缀只含一个 / 或无前缀斜杠的
     const rootLevel = allFolders.filter(f => (f.prefix.match(/\//g) || []).length === 1);
-    const rendered = new Set();
 
-    const renderFolder = (node, depth) => {
-      if (rendered.has(node.prefix)) return;
-      rendered.add(node.prefix);
+    for (const folder of rootLevel) {
+      frag.appendChild(this._renderFolderNode(folder, 0, collapsed));
+    }
 
-      const el = this._renderFolderNode(node, depth, collapsed);
-      frag.appendChild(el);
-
-      // 渲染子目录
-      const subs = Object.values(node.sub);
-      subs.sort((a, b) => a.prefix.length - b.prefix.length);
-      for (const sub of subs) {
-        renderFolder(sub, depth + 1);
-      }
-    };
-
-    for (const f of rootLevel) renderFolder(f, 0);
-
-    // 其他孤立目录（根层级没覆盖的，兜底渲染）
-    for (const f of allFolders) {
-      if (!rendered.has(f.prefix)) renderFolder(f, 0);
+    // 兜底：如果 rootLevel 过滤有遗漏（防御性），按前缀长度顺序渲染
+    for (const folder of allFolders) {
+      if (rootLevel.includes(folder)) continue;
+      frag.appendChild(this._renderFolderNode(folder, 0, collapsed));
     }
 
     container.innerHTML = '';
