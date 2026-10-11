@@ -2820,8 +2820,10 @@ const MobileReader = {
     });
 
     // ==== ➕按钮点击 → 读缓存 ====
-    addBtn.addEventListener('click', () => {
-      console.log('[MobileReader] ➕按钮点击, _pendingSelection =', _pendingSelection);
+    // 用 touchstart 而不是 click —— 鸿蒙/安卓系统长按菜单关闭后会吃掉第一次 click
+    addBtn.addEventListener('touchstart', (e) => {
+      e.preventDefault(); // 阻止后续再触发 click（加锁）
+      console.log('[MobileReader] ➕touchstart, _pendingSelection =', _pendingSelection);
       if (!_pendingSelection) {
         this._toast('请先选文字，或点击一条批注卡片');
         return;
@@ -2836,11 +2838,10 @@ const MobileReader = {
         try { window.getSelection().removeAllRanges(); } catch(_) {}
       }
 
-      // 用完清缓存
       _pendingSelection = null;
       addBtn.classList.remove('child-mode');
       addBtn.title = '添加批注（先选文字或点击批注卡片）';
-    });
+    }, { passive: false });
   },
 
   /* 轻量 toast 提示 */
